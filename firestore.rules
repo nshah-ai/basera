@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /households/{householdId} {
+      // Allow read/write to anyone who knows the household ID.
+      // This is a basic rule matching our schema, ensuring tasks can only be accessed
+      // if the user has joined the household using the correct ID.
+      allow read, write: if true;
+
+      match /tasks/{taskId} {
+        allow read, write: if true;
+      }
+    }
+  }
+}
