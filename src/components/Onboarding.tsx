@@ -41,6 +41,9 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     const [joinCode, setJoinCode] = useState('');
     const [error, setError] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
+    const [fetchedUsers, setFetchedUsers] = useState<User[]>([]);
+
+    console.log("🌊 Onboarding Component Mounted. Step:", step, "Mode:", mode);
 
     const setUsers = useTaskStore((state) => state.setUsers);
     const setHouseholdId = useTaskStore((state) => state.setHouseholdId);
@@ -82,14 +85,9 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         try {
             const users = await joinHousehold(joinCode.trim());
             if (users) {
-                setHouseholdId(joinCode.trim().toUpperCase());
-                setUsers(users);
-                setCurrentUser(users[1].id); // Partner is the second user
-
-                setStep(2); // Success step
-                setTimeout(() => {
-                    onComplete();
-                }, 1500);
+                setFetchedUsers(users);
+                setStep(1); // Move to profile selection
+                setIsProcessing(false);
             } else {
                 setError("Household not found. Check the code and try again.");
                 setIsProcessing(false);
@@ -99,6 +97,16 @@ export function Onboarding({ onComplete }: OnboardingProps) {
             setError("Failed to join household.");
             setIsProcessing(false);
         }
+    };
+
+    const handleProfileSelect = (userId: string) => {
+        setHouseholdId(joinCode.trim().toUpperCase());
+        setUsers(fetchedUsers);
+        setCurrentUser(userId);
+        setStep(2); // Success step
+        setTimeout(() => {
+            onComplete();
+        }, 1500);
     };
 
     return (
@@ -167,16 +175,16 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                     >
                         <button
                             onClick={() => setMode('select')}
-                            className="text-sm text-gray-400 mb-6 hover:text-white transition-colors"
+                            className="text-sm text-textMuted mb-6 hover:text-textMain transition-colors"
                         >
                             ← Back
                         </button>
 
                         <div className="text-center mb-8">
-                            <h2 className="text-2xl font-bold mb-2">
+                            <h2 className="text-2xl font-bold mb-2 text-textMain">
                                 {step === 0 ? "What's your name?" : "And who's your partner?"}
                             </h2>
-                            <p className="text-gray-400 text-sm">
+                            <p className="text-textMuted text-sm">
                                 {step === 0 ? "You're setting up the household." : "We'll set up their profile."}
                             </p>
                         </div>
@@ -190,16 +198,16 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                                 placeholder={step === 0 ? "Your name" : "Partner's name"}
                                 autoFocus
                                 disabled={isProcessing}
-                                className="w-full bg-[#1A2942] border border-[#2D3F5F] rounded-2xl px-6 py-4 text-white placeholder-gray-500 focus:outline-none focus:border-[#FF6B9D] transition-all"
+                                className="w-full bg-surface border border-border rounded-2xl px-6 py-4 text-textMain placeholder-textMuted focus:outline-none focus:border-primary transition-all shadow-sm"
                             />
                         </div>
 
-                        {error && <p className="text-red-400 text-sm text-center mb-4">{error}</p>}
+                        {error && <p className="text-red-500 text-sm text-center mb-4">{error}</p>}
 
                         <button
                             onClick={handleCreateContinue}
                             disabled={(step === 0 ? !userName.trim() : !partnerName.trim()) || isProcessing}
-                            className="w-full bg-gradient-to-r from-[#FF6B9D] to-[#C084FC] text-white py-4 rounded-2xl font-semibold flex items-center justify-center gap-2 disabled:opacity-40 transition-all active:scale-95"
+                            className="w-full bg-primary text-white py-4 rounded-2xl font-semibold flex items-center justify-center gap-2 disabled:opacity-40 transition-all active:scale-95 hover:shadow-md"
                         >
                             {isProcessing ? (
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -213,10 +221,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                     </motion.div>
                 )}
 
-                {/* Join Flow */}
+                {/* Join Step 0: Input Code */}
                 {mode === 'join' && step === 0 && (
                     <motion.div
-                        key="join"
+                        key="join-code"
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         className="w-full"
@@ -245,7 +253,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                                 maxLength={6}
                                 autoFocus
                                 disabled={isProcessing}
-                                className="w-full bg-surface border border-border rounded-2xl px-6 py-4 text-textMain placeholder-textMuted text-center text-2xl tracking-widest uppercase focus:outline-none focus:border-sage transition-all shadow-sm"
+                                className="w-full bg-surface border border-border rounded-2xl px-6 py-4 text-textMain placeholder-textMuted text-center text-2xl tracking-widest uppercase focus:outline-none focus:border-primary transition-all shadow-sm"
                             />
                         </div>
 
@@ -254,17 +262,63 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                         <button
                             onClick={handleJoinSubmit}
                             disabled={joinCode.length < 3 || isProcessing}
-                            className="w-full bg-sage text-white py-4 rounded-2xl font-medium flex items-center justify-center gap-2 disabled:opacity-40 transition-all active:scale-95 hover:shadow-md"
+                            className="w-full bg-primary text-white py-4 rounded-2xl font-medium flex items-center justify-center gap-2 disabled:opacity-40 transition-all active:scale-95 hover:shadow-md"
                         >
                             {isProcessing ? (
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             ) : (
                                 <>
-                                    Join Now
+                                    Locate Household
                                     <ArrowRight className="w-5 h-5" />
                                 </>
                             )}
                         </button>
+                    </motion.div>
+                )}
+
+                {/* Join Step 1: Select Profile */}
+                {mode === 'join' && step === 1 && (
+                    <motion.div
+                        key="join-profile"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="w-full"
+                    >
+                        <button
+                            onClick={() => { setStep(0); setError(''); }}
+                            className="text-sm text-textMuted mb-6 hover:text-textMain transition-colors"
+                        >
+                            ← Back
+                        </button>
+
+                        <div className="text-center mb-8">
+                            <h2 className="text-2xl font-bold mb-2 text-textMain">Who are you?</h2>
+                            <p className="text-textMuted text-sm">
+                                Select your profile to sync this device.
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 mb-8">
+                            {fetchedUsers.map((user) => (
+                                <button
+                                    key={user.id}
+                                    onClick={() => handleProfileSelect(user.id)}
+                                    className="p-6 bg-surface border border-border rounded-3xl hover:border-primary hover:shadow-md transition-all active:scale-95 group text-center"
+                                >
+                                    <div
+                                        className="w-16 h-16 rounded-full flex items-center justify-center text-white text-2xl font-bold mx-auto mb-3 shadow-sm group-hover:scale-110 transition-transform"
+                                        style={{ backgroundColor: user.avatarColor }}
+                                    >
+                                        {user.name.charAt(0).toUpperCase()}
+                                    </div>
+                                    <span className="font-semibold text-textMain">{user.name}</span>
+                                </button>
+                            ))}
+                        </div>
+
+                        <p className="text-xs text-center text-textMuted italic">
+                            Both partners will stay in sync 🏡
+                        </p>
                     </motion.div>
                 )}
 

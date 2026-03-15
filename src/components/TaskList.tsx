@@ -20,6 +20,7 @@ export function TaskList() {
     const [editingTask, setEditingTask] = useState<Task | null>(null);
 
     useEffect(() => {
+        console.log("📍 TaskList mounted. Syncing with household:", householdId);
         if (!householdId) return;
         const unsubscribe = subscribeToTasks(householdId, (syncedTasks) => {
             setTasks(syncedTasks);

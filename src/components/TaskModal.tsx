@@ -64,17 +64,13 @@ export function TaskModal({ isOpen, onClose, editTask }: TaskModalProps) {
 
         if (editTask) {
             // Update existing task
-            const updateTask = useTaskStore.getState().tasks.find(t => t.id === editTask.id);
-            if (updateTask) {
-                Object.assign(updateTask, {
-                    title,
-                    assigneeId: assignedTo,
-                    priority,
-                    recurrence,
-                    dueDate: dueDate.toISOString(),
-                });
-                useTaskStore.setState({ tasks: [...useTaskStore.getState().tasks] });
-            }
+            useTaskStore.getState().updateTask(editTask.id, {
+                title,
+                assigneeId: assignedTo,
+                priority,
+                recurrence,
+                dueDate: dueDate.toISOString(),
+            });
         } else {
             // Add new task
             addTask({

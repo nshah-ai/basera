@@ -24,9 +24,25 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, errorMessage: string): 
     });
 };
 
+export const ensureHouseholdDoc = async (householdId: string, users: User[]) => {
+    const docRef = doc(db, 'households', householdId.toUpperCase());
+    const docSnap = await getDoc(docRef);
+
+    if (!docSnap.exists()) {
+        console.log(`🏠 Restoring missing household document: ${householdId}`);
+        await setDoc(docRef, {
+            users,
+            createdAt: serverTimestamp(),
+            isRestored: true, // Tagging it as restored for auditing
+        });
+    }
+};
+
 export const createHousehold = async (users: User[]): Promise<string> => {
     // Generate a short 6-character code for easy joining
     const householdId = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    console.log(`📡 Creating household: ${householdId}`);
 
     const writePromise = setDoc(doc(db, 'households', householdId), {
         users,
@@ -39,6 +55,7 @@ export const createHousehold = async (users: User[]): Promise<string> => {
         "Firestore write timed out. Have you initialized your Firestore Database in the Firebase Console?"
     );
 
+    console.log(`✅ Household ${householdId} created successfully.`);
     return householdId;
 };
 
@@ -72,19 +89,36 @@ export const subscribeToTasks = (householdId: string, callback: (tasks: Task[]) 
     });
 };
 
-export const addTaskSync = async (householdId: string, task: Omit<Task, 'id' | 'createdAt' | 'status'>) => {
+export const addTaskSync = async (householdId: string, task: Omit<Task, 'id' | 'createdAt' | 'status'>, currentUsers: User[]) => {
     const taskId = generateId();
-    const taskRef = doc(db, 'households', householdId.toUpperCase(), 'tasks', taskId);
+    const hId = householdId.toUpperCase();
+    const taskRef = doc(db, 'households', hId, 'tasks', taskId);
 
-    await setDoc(taskRef, {
-        ...task,
-        status: 'pending',
-        createdAt: Date.now(), // using client time for easier sorting consistency across platforms
-    });
+    console.log(`📡 Syncing task to: households/${hId}/tasks/${taskId}`);
+
+    try {
+        // First ensure the parent household exists (self-healing)
+        await ensureHouseholdDoc(hId, currentUsers);
+
+        await setDoc(taskRef, {
+            ...task,
+            status: 'pending',
+            createdAt: Date.now(),
+        });
+        console.log(`✅ Task synced successfully.`);
+    } catch (error) {
+        console.error(`❌ Failed to sync task:`, error);
+        throw error;
+    }
 };
 
-export const updateTaskStatusSync = async (householdId: string, taskId: string, status: 'pending' | 'completed') => {
-    const taskRef = doc(db, 'households', householdId.toUpperCase(), 'tasks', taskId);
+export const updateTaskStatusSync = async (householdId: string, taskId: string, status: 'pending' | 'completed', currentUsers: User[]) => {
+    const hId = householdId.toUpperCase();
+    const taskRef = doc(db, 'households', hId, 'tasks', taskId);
+
+    // Self-healing
+    await ensureHouseholdDoc(hId, currentUsers);
+
     const updateData: any = { status };
     if (status === 'completed') {
         updateData.completedAt = Date.now();
@@ -94,12 +128,22 @@ export const updateTaskStatusSync = async (householdId: string, taskId: string, 
     await updateDoc(taskRef, updateData);
 };
 
-export const updateTaskSync = async (householdId: string, taskId: string, updates: Partial<Task>) => {
-    const taskRef = doc(db, 'households', householdId.toUpperCase(), 'tasks', taskId);
+export const updateTaskSync = async (householdId: string, taskId: string, updates: Partial<Task>, currentUsers: User[]) => {
+    const hId = householdId.toUpperCase();
+    const taskRef = doc(db, 'households', hId, 'tasks', taskId);
+
+    // Self-healing
+    await ensureHouseholdDoc(hId, currentUsers);
+
     await updateDoc(taskRef, updates);
 };
 
-export const deleteTaskSync = async (householdId: string, taskId: string) => {
-    const taskRef = doc(db, 'households', householdId.toUpperCase(), 'tasks', taskId);
+export const deleteTaskSync = async (householdId: string, taskId: string, currentUsers: User[]) => {
+    const hId = householdId.toUpperCase();
+    const taskRef = doc(db, 'households', hId, 'tasks', taskId);
+
+    // Self-healing
+    await ensureHouseholdDoc(hId, currentUsers);
+
     await deleteDoc(taskRef);
 };

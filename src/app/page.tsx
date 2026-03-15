@@ -10,6 +10,8 @@ export default function Home() {
   const [isOnboarded, setIsOnboarded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  console.log("🔥 Basera Home Root Loaded. Users count:", users.length);
+
   useEffect(() => {
     if (isLoading) {
       // Upon initial load/hydration, if users exist, fast-forward to TaskList

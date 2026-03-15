@@ -1,0 +1,59 @@
+<svg width="600" height="400" viewBox="0 0 600 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="600" height="400" fill="#F5EFE6" />
+
+  <!-- Perspective Floor (Aangan Tiles) -->
+  <path d="M0 400 L600 400 L450 280 L150 280 Z" fill="#E5D9C5" fill-opacity="0.3" />
+  <path d="M150 280 L450 280 L400 220 L200 220 Z" fill="#E5D9C5" fill-opacity="0.2" />
+  
+  {/* Perspective lines */}
+  <line x1="50" y1="400" x2="180" y2="280" stroke="#E5D9C5" stroke-width="1" />
+  <line x1="550" y1="400" x2="420" y2="280" stroke="#E5D9C5" stroke-width="1" />
+  <line x1="150" y1="280" x2="600" y2="280" stroke="#E5D9C5" stroke-width="1" />
+  
+  <!-- Architectural Depth: Distant Arches -->
+  <path d="M220 220 Q 300 150 380 220" stroke="#E5D9C5" stroke-width="1.5" fill="none" stroke-opacity="0.5" />
+  <path d="M100 220 L100 120 Q 300 40 500 120 L500 220" stroke="#E5D9C5" stroke-width="2" fill="none" stroke-opacity="0.3" />
+
+  <!-- Main Pillars -->
+  {/* Left Pillar */}
+  <rect x="130" y="80" width="16" height="200" fill="#FFFFFF" stroke="#E5D9C5" stroke-width="1.2" />
+  <path d="M130 100 Q 110 100 110 85" stroke="#E5D9C5" stroke-width="1.2" fill="none" />
+  <path x="146" y="100" d="M146 100 Q 166 100 166 85" stroke="#E5D9C5" stroke-width="1.2" fill="none" />
+  
+  {/* Right Pillar */}
+  <rect x="454" y="80" width="16" height="200" fill="#FFFFFF" stroke="#E5D9C5" stroke-width="1.2" />
+  <path d="M454 100 Q 434 100 434 85" stroke="#E5D9C5" stroke-width="1.2" fill="none" />
+  <path d="M470 100 Q 490 100 490 85" stroke="#E5D9C5" stroke-width="1.2" fill="none" />
+
+  <!-- The Stone Jhula (Swing) -->
+  {/* Heavy Carved Chains/Ropes */}
+  <path d="M210 50 L210 230" stroke="#8C7E6D" stroke-width="2" stroke-dasharray="4 2" />
+  <path d="M390 50 L390 230" stroke="#8C7E6D" stroke-width="2" stroke-dasharray="4 2" />
+  
+  {/* The Seat (Stone-like with carving detail) */}
+  <rect x="180" y="230" width="240" height="12" rx="2" fill="#8C7E6D" fill-opacity="0.8" />
+  <rect x="180" y="242" width="240" height="4" fill="#3D2B1F" fill-opacity="0.2" />
+  
+  <!-- The Couple (Minimal but evocative) -->
+  {/* Person 1 */}
+  <circle cx="270" cy="180" r="12" stroke="#3E3124" stroke-width="1.5" />
+  <path d="M270 192 C 270 215 240 225 240 230" stroke="#3E3124" stroke-width="1.5" fill="none" />
+  
+  {/* Person 2 */}
+  <circle cx="330" cy="175" r="11" stroke="#3E3124" stroke-width="1.5" />
+  <path d="M330 186 C 330 215 360 225 360 230" stroke="#3E3124" stroke-width="1.5" fill="none" />
+  
+  {/* Symbolic connection */}
+  <path d="M285 200 Q 300 190 315 200" stroke="#3E3124" stroke-width="1.5" fill="none" />
+
+  <!-- Potted Plants (Depth) -->
+  {/* Left foreground plant */}
+  <rect x="60" y="260" width="30" height="40" rx="4" fill="#FFFFFF" stroke="#E5D9C5" />
+  <path d="M75 260 Q 60 200 40 210" stroke="#899B82" stroke-width="2" fill="none" />
+  <path d="M75 260 Q 90 200 110 210" stroke="#899B82" stroke-width="2" fill="none" />
+  
+  {/* Right secondary plant */}
+  <rect x="510" y="260" width="30" height="40" rx="4" fill="#FFFFFF" stroke="#E5D9C5" />
+  <path d="M525 260 Q 540 200 560 210" stroke="#899B82" stroke-width="2" fill="none" />
+</svg>

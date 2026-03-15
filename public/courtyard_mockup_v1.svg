@@ -1,0 +1,47 @@
+<svg width="400" height="300" viewBox="0 0 400 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Color (Warm Beige) -->
+  <rect width="400" height="300" fill="#F5EFE6" />
+  
+  <!-- The Courtyard (Aangan) Base -->
+  <path d="M50 250 L350 250" stroke="#E5D9C5" stroke-width="2" />
+  <path d="M80 250 L320 250" stroke="#3E3124" stroke-width="1.5" stroke-opacity="0.2" />
+
+  <!-- Pillars -->
+  <rect x="70" y="80" width="12" height="170" fill="#FFFFFF" stroke="#E5D9C5" stroke-width="1.5" />
+  <rect x="318" y="80" width="12" height="170" fill="#FFFFFF" stroke="#E5D9C5" stroke-width="1.5" />
+  
+  <!-- Pillar Brackets (Traditional look) -->
+  <path d="M70 100 Q 50 100 50 80" stroke="#E5D9C5" stroke-width="1.5" fill="none" />
+  <path d="M82 100 Q 102 100 102 80" stroke="#E5D9C5" stroke-width="1.5" fill="none" />
+  <path d="M318 100 Q 298 100 298 80" stroke="#E5D9C5" stroke-width="1.5" fill="none" />
+  <path d="M330 100 Q 350 100 350 80" stroke="#E5D9C5" stroke-width="1.5" fill="none" />
+
+  <!-- The Arch -->
+  <path d="M82 80 Q 200 40 318 80" stroke="#E5D9C5" stroke-width="2" fill="none" />
+
+  <!-- The Swing (Jhula) -->
+  {/* Ropes */}
+  <path d="M140 60 L140 200" stroke="#8C7E6D" stroke-width="1.5" stroke-dasharray="2 2" />
+  <path d="M260 60 L260 200" stroke="#8C7E6D" stroke-width="1.5" stroke-dasharray="2 2" />
+  
+  {/* The Seat */}
+  <rect x="120" y="200" width="160" height="8" rx="2" fill="#3D2B1F" />
+  
+  <!-- The Couple -->
+  {/* Person 1 (leaning) */}
+  <circle cx="180" cy="155" r="10" stroke="#3E3124" stroke-width="1.5" />
+  <path d="M180 165 C 180 185 160 195 160 200" stroke="#3E3124" stroke-width="1.5" fill="none" />
+  
+  {/* Person 2 */}
+  <circle cx="215" cy="152" r="9" stroke="#3E3124" stroke-width="1.5" />
+  <path d="M215 161 C 215 185 240 195 240 200" stroke="#3E3124" stroke-width="1.5" fill="none" />
+  
+  {/* Connection (Shared arm) */}
+  <path d="M190 175 Q 200 170 205 175" stroke="#3E3124" stroke-width="1.5" fill="none" />
+
+  <!-- Plants -->
+  <path d="M60 250 Q 40 220 50 190" stroke="#899B82" stroke-width="2" fill="none" />
+  <circle cx="50" cy="190" r="3" fill="#899B82" />
+  <path d="M340 250 Q 360 220 350 190" stroke="#899B82" stroke-width="2" fill="none" />
+  <circle cx="350" cy="190" r="3" fill="#899B82" />
+</svg>

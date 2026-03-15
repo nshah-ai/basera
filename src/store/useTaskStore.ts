@@ -41,41 +41,41 @@ export const useTaskStore = create<TaskState>()(
             setHouseholdId: (id) => set({ householdId: id }),
 
             addTask: async (taskData) => {
-                const { householdId } = get();
+                const { householdId, users } = get();
                 if (!householdId) return;
                 try {
-                    await addTaskSync(householdId, taskData);
+                    await addTaskSync(householdId, taskData, users);
                 } catch (e) {
                     console.error("Failed to add task", e);
                 }
             },
 
             toggleTask: async (id, currentStatus) => {
-                const { householdId } = get();
+                const { householdId, users } = get();
                 if (!householdId) return;
                 const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
                 try {
-                    await updateTaskStatusSync(householdId, id, newStatus);
+                    await updateTaskStatusSync(householdId, id, newStatus, users);
                 } catch (e) {
                     console.error("Failed to update status", e);
                 }
             },
 
             deleteTask: async (id) => {
-                const { householdId } = get();
+                const { householdId, users } = get();
                 if (!householdId) return;
                 try {
-                    await deleteTaskSync(householdId, id);
+                    await deleteTaskSync(householdId, id, users);
                 } catch (e) {
                     console.error("Failed to delete", e);
                 }
             },
 
             updateTask: async (id, updates) => {
-                const { householdId } = get();
+                const { householdId, users } = get();
                 if (!householdId) return;
                 try {
-                    await updateTaskSync(householdId, id, updates);
+                    await updateTaskSync(householdId, id, updates, users);
                 } catch (e) {
                     console.error("Failed to update task", e);
                 }
