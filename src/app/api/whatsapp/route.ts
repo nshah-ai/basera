@@ -9,7 +9,7 @@ const MODEL_NAME = "gemini-2.0-flash";
 export async function GET() {
     const apiKey = process.env.GEMINI_API_KEY;
     return NextResponse.json({
-        diagnostics: "WhatsApp Webhook is Live",
+        diagnostics: "WhatsApp Webhook is Live - VERSION_BETA_2.0",
         geminiKeyConfigured: !!apiKey,
         geminiKeyLength: apiKey?.length || 0,
         modelTarget: MODEL_NAME,
