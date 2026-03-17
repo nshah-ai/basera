@@ -83,41 +83,46 @@ export async function POST(req: NextRequest) {
 
         // 2. Parse with Gemini
         console.log('🤖 Parsing with Gemini...');
-        const prompt = `Interpret the following text into a structured task for a household app. 
-        Text: "${incomingMsg}"
-        Today's Date: ${new Date().toLocaleDateString()}
-        Output JSON only: { "title": string, "priority": "high"|"medium"|"low", "assigneeId": string|null, "dueDate": "YYYY-MM-DD" }
-        If no priority mentioned, use "medium". If no date, use today. assigneeId should be "${userId}" if they say "me" or "I", otherwise null.`;
-
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
-        const taskDataRaw = text.replace(/```json|```/g, '').trim();
-        console.log('📝 Gemini Result:', taskDataRaw);
-
         let taskData;
         try {
+            const prompt = `Interpret the following text into a structured task for a household app. 
+            Text: "${incomingMsg}"
+            Today's Date: ${new Date().toLocaleDateString()}
+            Output JSON only: { "title": string, "priority": "high"|"medium"|"low", "assigneeId": string|null, "dueDate": "YYYY-MM-DD" }
+            If no priority mentioned, use "medium". If no date, use today. assigneeId should be "${userId}" if they say "me" or "I", otherwise null.`;
+
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
+            const taskDataRaw = text.replace(/```json|```/g, '').trim();
+            console.log('📝 Gemini Result:', taskDataRaw);
             taskData = JSON.parse(taskDataRaw);
-        } catch (pe) {
-            console.error('❌ Failed to parse Gemini JSON:', taskDataRaw);
-            throw new Error(`Gemini returned invalid JSON: ${taskDataRaw.substring(0, 50)}...`);
+        } catch (aiError: any) {
+            console.error('❌ Gemini Error:', aiError);
+            messagingResponse.message(`🤖 Gemini Error: ${aiError.message || 'AI failed to parse'}`);
+            return new NextResponse(messagingResponse.toString(), { headers: { 'Content-Type': 'text/xml' } });
         }
 
         // 3. Save to Firestore
-        const newTask = {
-            ...taskData,
-            status: 'pending',
-            createdAt: Date.now(),
-            recurrence: 'none'
-        };
+        try {
+            const newTask = {
+                ...taskData,
+                status: 'pending',
+                createdAt: Date.now(),
+                recurrence: 'none'
+            };
 
-        console.log(`💾 Saving task to households/${householdId}/tasks...`);
-        const taskRef = await adminDb.collection('households').doc(householdId).collection('tasks').add(newTask);
-        console.log(`✅ Task saved with ID: ${taskRef.id}`);
+            console.log(`💾 Saving task to households/${householdId}/tasks...`);
+            const taskRef = await adminDb.collection('households').doc(householdId).collection('tasks').add(newTask);
+            console.log(`✅ Task saved with ID: ${taskRef.id}`);
 
-        // 4. Respond
-        const responseBody = `✅ Added to Basera: *${newTask.title}*\nPriority: ${newTask.priority}\nDue: ${newTask.dueDate}`;
-        messagingResponse.message(responseBody);
+            // 4. Respond
+            const responseBody = `✅ Added to Basera: *${newTask.title}*\nPriority: ${newTask.priority}\nDue: ${newTask.dueDate}`;
+            messagingResponse.message(responseBody);
+        } catch (dbError: any) {
+            console.error('❌ Firestore Error:', dbError);
+            messagingResponse.message(`💾 Firestore Error: ${dbError.message || 'Failed to save task'}`);
+        }
 
         return new NextResponse(messagingResponse.toString(), {
             headers: { 'Content-Type': 'text/xml' }
