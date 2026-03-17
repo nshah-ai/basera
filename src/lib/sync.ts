@@ -30,8 +30,10 @@ export const ensureHouseholdDoc = async (householdId: string, users: User[]) => 
 
     if (!docSnap.exists()) {
         console.log(`🏠 Restoring missing household document: ${householdId}`);
+        const userPhoneNumbers = users.map(u => u.phoneNumber).filter(p => !!p);
         await setDoc(docRef, {
             users,
+            userPhoneNumbers,
             createdAt: serverTimestamp(),
             isRestored: true, // Tagging it as restored for auditing
         });
@@ -44,8 +46,10 @@ export const createHousehold = async (users: User[]): Promise<string> => {
 
     console.log(`📡 Creating household: ${householdId}`);
 
+    const userPhoneNumbers = users.map(u => u.phoneNumber).filter(p => !!p);
     const writePromise = setDoc(doc(db, 'households', householdId), {
         users,
+        userPhoneNumbers,
         createdAt: serverTimestamp(),
     });
 

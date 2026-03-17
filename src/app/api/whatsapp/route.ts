@@ -14,24 +14,29 @@ export async function POST(req: NextRequest) {
 
         console.log(`Received WhatsApp from ${fromNumber}: ${incomingMsg}`);
 
-        // 1. Find user by phone number
-        const usersSnapshot = await adminDb.collectionGroup('users')
-            .where('phoneNumber', '==', fromNumber.replace('whatsapp:', ''))
+        // 1. Find household by phone number
+        const number = fromNumber.replace('whatsapp:', '');
+        const householdsSnapshot = await adminDb.collection('households')
+            .where('userPhoneNumbers', 'array-contains', number)
             .limit(1)
             .get();
 
         const messagingResponse = new twilio.twiml.MessagingResponse();
 
-        if (usersSnapshot.empty) {
+        if (householdsSnapshot.empty) {
             messagingResponse.message("🏡 Basera: We don't recognize this number. Please add it to your profile in the app first!");
             return new NextResponse(messagingResponse.toString(), {
                 headers: { 'Content-Type': 'text/xml' }
             });
         }
 
-        const userDoc = usersSnapshot.docs[0];
-        const userId = userDoc.id;
-        const householdId = userDoc.ref.parent.parent?.id;
+        const hDoc = householdsSnapshot.docs[0];
+        const householdId = hDoc.id;
+        const hData = hDoc.data();
+
+        // Find the specific user from the users array
+        const user = hData.users.find((u: any) => u.phoneNumber === number);
+        const userId = user?.id || 'Shared';
 
         if (!householdId) {
             throw new Error("Could not determine household ID");

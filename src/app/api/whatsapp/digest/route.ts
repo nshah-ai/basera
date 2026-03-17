@@ -14,7 +14,9 @@ export async function GET(req: NextRequest) {
         const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
         for (const hDoc of households.docs) {
-            const users = await hDoc.ref.collection('users').get();
+            const hData = hDoc.data();
+            const users = hData.users || [];
+
             const pendingTasks = await hDoc.ref.collection('tasks')
                 .where('status', '==', 'pending')
                 .get();
@@ -23,8 +25,7 @@ export async function GET(req: NextRequest) {
 
             const taskList = pendingTasks.docs.map(t => `- ${t.data().title}`).join('\n');
 
-            for (const uDoc of users.docs) {
-                const userData = uDoc.data();
+            for (const userData of users) {
                 if (userData.phoneNumber) {
                     await client.messages.create({
                         from: 'whatsapp:+14155238886', // Twilio Sandbox Number
