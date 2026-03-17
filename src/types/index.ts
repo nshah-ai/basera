@@ -6,6 +6,7 @@ export interface User {
     id: string;
     name: string;
     avatarColor: string; // Hex code for avatar background
+    phoneNumber?: string; // For WhatsApp notifications
 }
 
 export interface Task {

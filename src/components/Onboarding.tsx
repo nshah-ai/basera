@@ -38,6 +38,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     const [step, setStep] = useState(0);
     const [userName, setUserName] = useState('');
     const [partnerName, setPartnerName] = useState('');
+    const [phoneNumber, setPhoneNumber] = useState(''); // New: for WhatsApp
     const [joinCode, setJoinCode] = useState('');
     const [error, setError] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
@@ -49,15 +50,26 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     const setHouseholdId = useTaskStore((state) => state.setHouseholdId);
     const setCurrentUser = useTaskStore((state) => state.setCurrentUser);
 
+    const getAvatarColor = (index: number) => {
+        const colors = ['#D29C42', '#899B82']; // Example colors
+        return colors[index % colors.length];
+    };
+
     const handleCreateContinue = async () => {
         if (step === 0 && userName.trim()) {
             setStep(1);
         } else if (step === 1 && partnerName.trim()) {
+            setStep(3); // New intermediate step for phone
+        } else if (step === 3) {
+            // Actual creation
             setIsProcessing(true);
             try {
+                const creatorId = generateId();
+                const partnerId = generateId();
+
                 const newUsers: User[] = [
-                    { id: generateId(), name: userName, avatarColor: '#D29C42' },
-                    { id: generateId(), name: partnerName, avatarColor: '#899B82' },
+                    { id: creatorId, name: userName, avatarColor: getAvatarColor(0), phoneNumber: phoneNumber.trim() || undefined },
+                    { id: partnerId, name: partnerName, avatarColor: getAvatarColor(1) },
                 ];
 
                 const householdId = await createHousehold(newUsers);
@@ -165,8 +177,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                     </motion.div>
                 )}
 
-                {/* Create Flow */}
-                {mode === 'create' && step < 2 && (
+                {/* Create Flow: Step 0 (Self), Step 1 (Partner), Step 3 (Phone) */}
+                {mode === 'create' && step < 2 && step !== 3 && (
                     <motion.div
                         key="create"
                         initial={{ opacity: 0, y: 20 }}
@@ -213,7 +225,62 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             ) : (
                                 <>
-                                    {step === 0 ? 'Continue' : 'Create Household'}
+                                    {step === 0 ? 'Continue' : 'Continue'}
+                                    <ArrowRight className="w-5 h-5" />
+                                </>
+                            )}
+                        </button>
+                    </motion.div>
+                )}
+
+                {/* Create Flow: Step 3 (Phone Number) */}
+                {mode === 'create' && step === 3 && (
+                    <motion.div
+                        key="create-phone"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="w-full"
+                    >
+                        <button
+                            onClick={() => setStep(1)}
+                            className="text-sm text-textMuted mb-6 hover:text-textMain transition-colors"
+                        >
+                            ← Back
+                        </button>
+
+                        <div className="text-center mb-8">
+                            <h2 className="text-2xl font-bold mb-2 text-textMain">Sync with WhatsApp?</h2>
+                            <p className="text-textMuted text-sm">
+                                Get daily nudges and add tasks via text.
+                            </p>
+                        </div>
+
+                        <div className="mb-8">
+                            <input
+                                type="tel"
+                                value={phoneNumber}
+                                onChange={(e) => setPhoneNumber(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && handleCreateContinue()}
+                                placeholder="+1234567890"
+                                autoFocus
+                                disabled={isProcessing}
+                                className="w-full bg-surface border border-border rounded-2xl px-6 py-4 text-textMain placeholder-textMuted focus:outline-none focus:border-primary transition-all shadow-sm"
+                            />
+                            <p className="text-[10px] text-textMuted mt-2 px-2 italic">
+                                *Optional. Skip by leaving empty.
+                            </p>
+                        </div>
+
+                        <button
+                            onClick={handleCreateContinue}
+                            disabled={isProcessing}
+                            className="w-full bg-primary text-white py-4 rounded-2xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 hover:shadow-md"
+                        >
+                            {isProcessing ? (
+                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : (
+                                <>
+                                    Create Household
                                     <ArrowRight className="w-5 h-5" />
                                 </>
                             )}
