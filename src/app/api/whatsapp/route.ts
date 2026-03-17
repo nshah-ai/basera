@@ -40,13 +40,20 @@ export async function POST(req: NextRequest) {
         const messagingResponse = new twilio.twiml.MessagingResponse();
         const number = fromNumber.replace('whatsapp:', '');
 
-        // --- NEW: Echo/Test Mode ---
+        // --- NEW: Debug Commands ---
+        if (incomingMsg.toLowerCase().trim() === 'whoami') {
+            const snapshot = await adminDb.collection('households')
+                .where('userPhoneNumbers', 'array-contains', number)
+                .get();
+
+            messagingResponse.message(`🕵️ WhatsApp ID: ${number}\n🏠 Found Household: ${!snapshot.empty ? snapshot.docs[0].id : 'Not Found'}`);
+            return new NextResponse(messagingResponse.toString(), { headers: { 'Content-Type': 'text/xml' } });
+        }
+
         if (incomingMsg.toLowerCase().startsWith('test:')) {
             console.log('🧪 Echo mode triggered');
             messagingResponse.message(`🧪 Echo: ${incomingMsg.substring(5).trim()}`);
-            return new NextResponse(messagingResponse.toString(), {
-                headers: { 'Content-Type': 'text/xml' }
-            });
+            return new NextResponse(messagingResponse.toString(), { headers: { 'Content-Type': 'text/xml' } });
         }
 
         // 1. Find household by phone number
