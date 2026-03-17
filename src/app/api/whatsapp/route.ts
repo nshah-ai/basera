@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
         console.log(`🔑 Gemini Key Present: ${!!apiKey} (Length: ${apiKey?.length || 0})`);
 
         const genAI = new GoogleGenerativeAI(apiKey || '');
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
         const formData = await req.formData();
         const incomingMsg = (formData.get('Body') as string) || '';
