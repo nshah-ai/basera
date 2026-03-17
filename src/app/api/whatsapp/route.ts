@@ -3,12 +3,15 @@ import { adminDb } from '@/lib/firebase-admin';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import twilio from 'twilio';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
-
 export async function POST(req: NextRequest) {
     console.log('--- 📨 Incoming WhatsApp Webhook ---');
     try {
+        const apiKey = process.env.GEMINI_API_KEY;
+        console.log(`🔑 Gemini Key Present: ${!!apiKey} (Length: ${apiKey?.length || 0})`);
+
+        const genAI = new GoogleGenerativeAI(apiKey || '');
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+
         const formData = await req.formData();
         const incomingMsg = (formData.get('Body') as string) || '';
         const fromNumber = (formData.get('From') as string) || '';
