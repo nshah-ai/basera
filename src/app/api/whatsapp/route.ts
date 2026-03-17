@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+        const model = genAI.getGenerativeModel({ model: "models/gemini-2.0-flash" });
 
         const formData = await req.formData();
         const incomingMsg = (formData.get('Body') as string) || '';
@@ -39,6 +39,15 @@ export async function POST(req: NextRequest) {
 
         const messagingResponse = new twilio.twiml.MessagingResponse();
         const number = fromNumber.replace('whatsapp:', '');
+
+        // --- NEW: Echo/Test Mode ---
+        if (incomingMsg.toLowerCase().startsWith('test:')) {
+            console.log('🧪 Echo mode triggered');
+            messagingResponse.message(`🧪 Echo: ${incomingMsg.substring(5).trim()}`);
+            return new NextResponse(messagingResponse.toString(), {
+                headers: { 'Content-Type': 'text/xml' }
+            });
+        }
 
         // 1. Find household by phone number
         console.log(`🔍 Looking up household for number: ${number}`);
@@ -78,7 +87,14 @@ export async function POST(req: NextRequest) {
         const text = response.text();
         const taskDataRaw = text.replace(/```json|```/g, '').trim();
         console.log('📝 Gemini Result:', taskDataRaw);
-        const taskData = JSON.parse(taskDataRaw);
+
+        let taskData;
+        try {
+            taskData = JSON.parse(taskDataRaw);
+        } catch (pe) {
+            console.error('❌ Failed to parse Gemini JSON:', taskDataRaw);
+            throw new Error(`Gemini returned invalid JSON: ${taskDataRaw.substring(0, 50)}...`);
+        }
 
         // 3. Save to Firestore
         const newTask = {
