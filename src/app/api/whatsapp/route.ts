@@ -3,14 +3,32 @@ import { adminDb } from '@/lib/firebase-admin';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import twilio from 'twilio';
 
+// Use gemini-2.0-flash based on your registry list
+const MODEL_NAME = "gemini-2.0-flash";
+
+export async function GET() {
+    const apiKey = process.env.GEMINI_API_KEY;
+    return NextResponse.json({
+        diagnostics: "WhatsApp Webhook is Live",
+        geminiKeyConfigured: !!apiKey,
+        geminiKeyLength: apiKey?.length || 0,
+        modelTarget: MODEL_NAME,
+        timestamp: new Date().toISOString()
+    });
+}
+
 export async function POST(req: NextRequest) {
     console.log('--- 📨 Incoming WhatsApp Webhook ---');
     try {
         const apiKey = process.env.GEMINI_API_KEY;
         console.log(`🔑 Gemini Key Present: ${!!apiKey} (Length: ${apiKey?.length || 0})`);
 
-        const genAI = new GoogleGenerativeAI(apiKey || '');
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        if (!apiKey) {
+            throw new Error("GEMINI_API_KEY is missing from environment variables.");
+        }
+
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
         const formData = await req.formData();
         const incomingMsg = (formData.get('Body') as string) || '';
