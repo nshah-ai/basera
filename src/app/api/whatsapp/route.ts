@@ -66,9 +66,7 @@ export async function POST(req: NextRequest) {
         if (householdsSnapshot.empty) {
             console.warn(`❌ No household found for ${number}`);
             messagingResponse.message("🏡 Basera: We don't recognize this number. Please add it to your profile in the app first!");
-            return new NextResponse(messagingResponse.toString(), {
-                headers: { 'Content-Type': 'text/xml' }
-            });
+            return new NextResponse(messagingResponse.toString(), { headers: { 'Content-Type': 'text/xml' } });
         }
 
         const hDoc = householdsSnapshot.docs[0];
@@ -81,30 +79,46 @@ export async function POST(req: NextRequest) {
         const userId = user?.id || 'Shared';
         console.log(`👤 Mapped to User ID: ${userId} (${user?.name || 'Unknown'})`);
 
-        // 2. Parse with Gemini
-        console.log('🤖 Parsing with Gemini...');
+        // --- NEW: Fast Path (Bypass AI) ---
         let taskData;
-        try {
-            const prompt = `Interpret the following text into a structured task for a household app. 
+        if (incomingMsg.toLowerCase().startsWith('fast:')) {
+            console.log('⚡ Fast path triggered (No AI)');
+            taskData = {
+                title: incomingMsg.substring(5).trim() || "Express Task",
+                priority: "medium",
+                assigneeId: userId,
+                dueDate: new Date().toISOString().split('T')[0]
+            };
+        } else {
+            // 2. Parse with Gemini (with 5s Timeout)
+            console.log('🤖 Parsing with Gemini...');
+            try {
+                const prompt = `Interpret the following text into a structured task for a household app. 
             Text: "${incomingMsg}"
             Today's Date: ${new Date().toLocaleDateString()}
             Output JSON only: { "title": string, "priority": "high"|"medium"|"low", "assigneeId": string|null, "dueDate": "YYYY-MM-DD" }
             If no priority mentioned, use "medium". If no date, use today. assigneeId should be "${userId}" if they say "me" or "I", otherwise null.`;
 
-            const result = await model.generateContent(prompt);
-            const response = await result.response;
-            const text = response.text();
-            const taskDataRaw = text.replace(/```json|```/g, '').trim();
-            console.log('📝 Gemini Result:', taskDataRaw);
-            taskData = JSON.parse(taskDataRaw);
-        } catch (aiError: any) {
-            console.error('❌ Gemini Error:', aiError);
-            messagingResponse.message(`🤖 Gemini Error: ${aiError.message || 'AI failed to parse'}`);
-            return new NextResponse(messagingResponse.toString(), { headers: { 'Content-Type': 'text/xml' } });
+                // Wrapper to prevent hanging
+                const aiPromise = model.generateContent(prompt);
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("AI Timeout (5s exceeded)")), 5000));
+
+                const result: any = await Promise.race([aiPromise, timeoutPromise]);
+                const response = await result.response;
+                const text = response.text();
+                const taskDataRaw = text.replace(/```json|```/g, '').trim();
+                console.log('📝 Gemini Result:', taskDataRaw);
+                taskData = JSON.parse(taskDataRaw);
+            } catch (aiError: any) {
+                console.error('❌ Gemini Error:', aiError.message);
+                messagingResponse.message(`🤖 AI Error: ${aiError.message}`);
+                return new NextResponse(messagingResponse.toString(), { headers: { 'Content-Type': 'text/xml' } });
+            }
         }
 
         // 3. Save to Firestore
         try {
+            console.log(`💾 Saving to DB: ${taskData.title}`);
             const newTask = {
                 ...taskData,
                 status: 'pending',
@@ -120,8 +134,8 @@ export async function POST(req: NextRequest) {
             const responseBody = `✅ Added to Basera: *${newTask.title}*\nPriority: ${newTask.priority}\nDue: ${newTask.dueDate}`;
             messagingResponse.message(responseBody);
         } catch (dbError: any) {
-            console.error('❌ Firestore Error:', dbError);
-            messagingResponse.message(`💾 Firestore Error: ${dbError.message || 'Failed to save task'}`);
+            console.error('❌ Firestore Error:', dbError.message);
+            messagingResponse.message(`💾 Database Error: ${dbError.message}`);
         }
 
         return new NextResponse(messagingResponse.toString(), {
