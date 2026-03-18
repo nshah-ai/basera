@@ -41,7 +41,10 @@ export async function POST(req: NextRequest) {
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "models/gemini-2.0-flash" });
+        const model = genAI.getGenerativeModel({
+            model: "models/gemini-2.0-flash",
+            generationConfig: { responseMimeType: "application/json" }
+        });
 
         const formData = await req.formData();
         const incomingMsg = (formData.get('Body') as string) || '';
@@ -112,52 +115,25 @@ export async function POST(req: NextRequest) {
                 dueDate: todayIST
             };
         } else {
-            // 2. Parse with Gemini (with 7s Timeout)
+            // 2. Parse with Gemini (Tight 3s Timeout)
             console.log('🤖 Gemini parsing starting...');
             try {
-                // Get all users in the household for context
                 const householdUsers = (hData.users || []) as User[];
-                const userListContext = householdUsers.map(u => `- ${u.name} (ID: ${u.id})`).join('\n');
+                const userContext = householdUsers.map(u => `${u.name}:${u.id}`).join(', ');
 
-                const prompt = `
-                Household members:
-                ${userListContext}
-
-                Current User: ${user?.name || 'Unknown'} (ID: ${userId})
-                Current Date: ${todayIST}
-
-                Task to parse: "${incomingMsg}"
-
-                Instructions:
-                Return ONLY a JSON object. No explanation. No markdown.
-                {
-                  "title": "Clean concise task name",
-                  "priority": "high" | "medium" | "low",
-                  "assigneeId": "ID from list" | null,
-                  "dueDate": "YYYY-MM-DD"
-                }
-                - Map names (Avanya, etc) to their IDs.
-                - If "me" used, use ID: ${userId}.
-                - If high priority mentioned, use "high".
-                `;
+                const prompt = `Task: "${incomingMsg}". Date: ${todayIST}. Users: ${userContext}. Sender: ${user?.name || 'User'}. JSON schema: { title, priority: "high"|"medium"|"low", assigneeId: string|null, dueDate: string }`;
 
                 const aiPromise = model.generateContent(prompt);
-                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("AI Timeout (7s)")), 7000));
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000));
 
                 const result: any = await Promise.race([aiPromise, timeoutPromise]);
                 const text = (await result.response).text();
-
-                // Robust JSON extraction: look for the first '{' and last '}'
-                const jsonMatch = text.match(/\{[\s\S]*\}/);
-                if (!jsonMatch) throw new Error("No JSON found in AI response");
-
-                taskData = JSON.parse(jsonMatch[0]);
-                console.log('✅ Parsed Task Data:', taskData);
+                taskData = JSON.parse(text);
+                console.log('✅ Parsed:', taskData);
             } catch (aiError: any) {
-                console.warn('⚠️ Gemini Speed issue or parsing error:', aiError.message);
-                // Fallback to basic task on timeout/error
+                console.warn('⚠️ AI Fallback:', aiError.message);
                 taskData = {
-                    title: `Unparsed: ${incomingMsg}`,
+                    title: incomingMsg,
                     priority: "medium",
                     assigneeId: null,
                     dueDate: todayIST,
