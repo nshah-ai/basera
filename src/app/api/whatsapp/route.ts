@@ -31,11 +31,15 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-    console.log('--- 📨 Incoming WhatsApp Webhook (Reverted to Sync) ---');
+    console.log('--- 📨 Incoming WhatsApp Webhook (Nudges Logic) ---');
     try {
         const apiKey = process.env.GEMINI_API_KEY;
-        if (!apiKey) throw new Error("GEMINI_API_KEY missing");
+        const sid = process.env.TWILIO_ACCOUNT_SID;
+        const token = process.env.TWILIO_AUTH_TOKEN;
 
+        if (!apiKey || !sid || !token) throw new Error("Missing Credentials (Gemini/Twilio)");
+
+        const client = twilio(sid, token);
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({
             model: "models/gemini-2.0-flash",
@@ -48,6 +52,7 @@ export async function POST(req: NextRequest) {
         const number = fromNumber.replace('whatsapp:', '');
 
         const messagingResponse = new twilio.twiml.MessagingResponse();
+
 
         // 1. Find household
         const householdsSnapshot = await adminDb.collection('households')
@@ -71,8 +76,10 @@ export async function POST(req: NextRequest) {
         // 2. AI Parsing (Synchronous, 4s Timeout)
         let taskData;
         try {
-            const userContext = (hData.users || []).map((u: any) => `${u.name}:${u.id}`).join(', ');
-            const prompt = `Task: "${incomingMsg}". Date: ${istDate}. Users: ${userContext}. Sender: ${user?.name}. JSON schema: { title, priority: "high"|"medium"|"low", assigneeId: string|null, dueDate: string }`;
+            const userContext = (hData.users || []).map((u: any) => `${u.name} (ID: ${u.id})`).join(', ');
+            const prompt = `Task: "${incomingMsg}". Date: ${istDate}. Users: ${userContext}. Sender: ${user?.name || 'User'} (ID: ${userId}). 
+            Instruction: If "for [name]" or similar is mentioned, use their ID from the list. 
+            JSON schema: { title, priority: "high"|"medium"|"low", assigneeId: string|null, dueDate: string }`;
 
             const aiPromise = model.generateContent(prompt);
             const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 4000));
@@ -96,15 +103,34 @@ export async function POST(req: NextRequest) {
 
         await adminDb.collection('households').doc(householdId).collection('tasks').doc(taskId).set(newTask);
 
-        // 4. Return TwiML Reply
+        // 4. Proactive Nudge to Assignee (if different from sender)
+        if (newTask.assigneeId && newTask.assigneeId !== userId) {
+            const assignee = (hData.users || []).find((u: any) => u.id === newTask.assigneeId);
+            if (assignee && assignee.phoneNumber) {
+                try {
+                    console.log(`🚀 Sending nudge to ${assignee.name} (${assignee.phoneNumber})`);
+                    await client.messages.create({
+                        from: 'whatsapp:+14155238886', // Twilio Sandbox
+                        to: `whatsapp:${assignee.phoneNumber}`,
+                        body: `🏡 *Basera Nudge*\n\nHey ${assignee.name}! ${user?.name || 'A partner'} just added a task for you:\n\n*${newTask.title}*\n${newTask.priority === 'high' ? '🚨 High Priority' : ''}`
+                    });
+                } catch (err: any) {
+                    console.error('❌ Nudge failed:', err.message);
+                }
+            }
+        }
+
+        // 5. Return TwiML Reply to Sender
         let responseMsg = `✅ Added: *${newTask.title}*`;
         if (newTask.priority === 'high') responseMsg += `\n🚨 High Priority`;
         if (newTask.assigneeId) {
             const assignee = (hData.users || []).find((u: any) => u.id === newTask.assigneeId);
             if (assignee) responseMsg += `\n👤 Assigned to: ${assignee.name}`;
+            if (newTask.assigneeId !== userId && assignee) responseMsg += `\n🔔 I've nudged ${assignee.name} on WhatsApp!`;
         }
 
         messagingResponse.message(responseMsg);
+
         return new NextResponse(messagingResponse.toString(), {
             headers: { 'Content-Type': 'text/xml' }
         });

@@ -2,7 +2,7 @@
     "crons": [
         {
             "path": "/api/whatsapp/digest",
-            "schedule": "30 8 * * *"
+            "schedule": "0 3 * * *"
         }
     ]
 }
