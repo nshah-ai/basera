@@ -151,3 +151,31 @@ export const deleteTaskSync = async (householdId: string, taskId: string, curren
 
     await deleteDoc(taskRef);
 };
+
+export const updateUserProfile = async (householdId: string, userId: string, updates: Partial<User>) => {
+    const hId = householdId.toUpperCase();
+    const docRef = doc(db, 'households', hId);
+
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) return;
+
+    const data = docSnap.data();
+    const users = (data.users || []) as User[];
+
+    const updatedUsers = users.map(u => {
+        if (u.id === userId) {
+            return { ...u, ...updates };
+        }
+        return u;
+    });
+
+    const userPhoneNumbers = updatedUsers.map(u => u.phoneNumber).filter(p => !!p);
+
+    await updateDoc(docRef, {
+        users: updatedUsers,
+        userPhoneNumbers
+    });
+
+    return updatedUsers;
+};
+

@@ -25,7 +25,7 @@ const SwingIcon = ({ className }: { className?: string }) => (
 );
 import { User } from '@/types';
 import { generateId } from '@/utils/uuid';
-import { createHousehold, joinHousehold } from '@/lib/sync';
+import { createHousehold, joinHousehold, updateUserProfile } from '@/lib/sync';
 
 interface OnboardingProps {
     onComplete: () => void;
@@ -43,6 +43,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     const [error, setError] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [fetchedUsers, setFetchedUsers] = useState<User[]>([]);
+    const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
     console.log("🌊 Onboarding Component Mounted. Step:", step, "Mode:", mode);
 
@@ -59,7 +60,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         if (step === 0 && userName.trim()) {
             setStep(1);
         } else if (step === 1 && partnerName.trim()) {
-            setStep(3); // New intermediate step for phone
+            setStep(3); // intermediate step for phone
         } else if (step === 3) {
             // Actual creation
             setIsProcessing(true);
@@ -112,13 +113,37 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     };
 
     const handleProfileSelect = (userId: string) => {
-        setHouseholdId(joinCode.trim().toUpperCase());
-        setUsers(fetchedUsers);
-        setCurrentUser(userId);
-        setStep(2); // Success step
-        setTimeout(() => {
-            onComplete();
-        }, 1500);
+        setSelectedUserId(userId);
+        setStep(3); // Go to phone collection step
+    };
+
+    const handleFinishJoin = async () => {
+        if (!selectedUserId || !joinCode) return;
+        setIsProcessing(true);
+        try {
+            const hId = joinCode.trim().toUpperCase();
+
+            // 1. Update Profile in Firestore if phone provided
+            let finalUsers = fetchedUsers;
+            if (phoneNumber.trim()) {
+                const updated = await updateUserProfile(hId, selectedUserId, { phoneNumber: phoneNumber.trim() });
+                if (updated) finalUsers = updated;
+            }
+
+            // 2. Set Local State
+            setHouseholdId(hId);
+            setUsers(finalUsers);
+            setCurrentUser(selectedUserId);
+
+            setStep(2); // Success step
+            setTimeout(() => {
+                onComplete();
+            }, 1500);
+        } catch (err) {
+            console.error(err);
+            setError("Failed to join. Please try again.");
+            setIsProcessing(false);
+        }
     };
 
     return (
@@ -233,10 +258,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                     </motion.div>
                 )}
 
-                {/* Create Flow: Step 3 (Phone Number) */}
-                {mode === 'create' && step === 3 && (
+                {/* Create/Join Flow: Step 3 (Phone Number) */}
+                {step === 3 && (
                     <motion.div
-                        key="create-phone"
+                        key="phone-collection"
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         className="w-full"
@@ -251,7 +276,9 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                         <div className="text-center mb-8">
                             <h2 className="text-2xl font-bold mb-2 text-textMain">Sync with WhatsApp?</h2>
                             <p className="text-textMuted text-sm">
-                                Get daily nudges and add tasks via text.
+                                {mode === 'create'
+                                    ? "Get daily nudges and add tasks via text."
+                                    : "We'll link your WhatsApp for easy task management."}
                             </p>
                         </div>
 
@@ -260,7 +287,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                                 type="tel"
                                 value={phoneNumber}
                                 onChange={(e) => setPhoneNumber(e.target.value)}
-                                onKeyPress={(e) => e.key === 'Enter' && handleCreateContinue()}
+                                onKeyPress={(e) => e.key === 'Enter' && (mode === 'create' ? handleCreateContinue() : handleFinishJoin())}
                                 placeholder="+1234567890"
                                 autoFocus
                                 disabled={isProcessing}
@@ -272,7 +299,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                         </div>
 
                         <button
-                            onClick={handleCreateContinue}
+                            onClick={mode === 'create' ? handleCreateContinue : handleFinishJoin}
                             disabled={isProcessing}
                             className="w-full bg-primary text-white py-4 rounded-2xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 hover:shadow-md"
                         >
@@ -280,7 +307,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             ) : (
                                 <>
-                                    Create Household
+                                    {mode === 'create' ? 'Create Household' : 'Complete Setup'}
                                     <ArrowRight className="w-5 h-5" />
                                 </>
                             )}
