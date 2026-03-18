@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { User } from '@/types';
 import twilio from 'twilio';
+
 
 // Use gemini-2.0-flash based on your registry list
 const MODEL_NAME = "gemini-2.0-flash";
@@ -110,22 +112,49 @@ export async function POST(req: NextRequest) {
                 dueDate: todayIST
             };
         } else {
-            // 2. Parse with Gemini (with 3s Timeout)
+            // 2. Parse with Gemini (with 7s Timeout)
             console.log('🤖 Gemini parsing starting...');
             try {
-                const prompt = `Task: "${incomingMsg}". Date: ${todayIST}. JSON: { "title": string, "priority": "high"|"medium"|"low", "assigneeId": "${userId}"|null, "dueDate": "YYYY-MM-DD" }`;
+                // Get all users in the household for context
+                const householdUsers = (hData.users || []) as User[];
+                const userListContext = householdUsers.map(u => `- ${u.name} (ID: ${u.id})`).join('\n');
+
+                const prompt = `
+                Household members:
+                ${userListContext}
+
+                Current User: ${user?.name || 'Unknown'} (ID: ${userId})
+                Current Date: ${todayIST}
+
+                Task to parse: "${incomingMsg}"
+
+                Instructions:
+                1. Extract the title of the task.
+                2. Determine priority ("high", "medium", "low"). Defaults to "medium".
+                3. Assign to a member ID if mentioned (e.g. "for Avanya" or "assign to Nishad"). 
+                   - Look for names in the household members list.
+                   - If "me" or "I" is used, assign to Current User ID.
+                   - If no mention, set assigneeId to null.
+                4. Determine dueDate ("YYYY-MM-DD"). Defaults to Current Date.
+
+                Output JSON only: { "title": string, "priority": string, "assigneeId": string|null, "dueDate": string }`;
 
                 const aiPromise = model.generateContent(prompt);
-                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("AI Timeout (3s)")), 3000));
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("AI Timeout (7s)")), 7000));
 
                 const result: any = await Promise.race([aiPromise, timeoutPromise]);
                 const text = (await result.response).text();
                 const taskDataRaw = text.replace(/```json|```/g, '').trim();
                 taskData = JSON.parse(taskDataRaw);
             } catch (aiError: any) {
-                console.warn('⚠️ Gemini Speed issue:', aiError.message);
-                // Fallback to basic task on timeout
-                taskData = { title: incomingMsg, priority: "medium", assigneeId: userId, dueDate: todayIST };
+                console.warn('⚠️ Gemini Speed issue or parsing error:', aiError.message);
+                // Fallback to basic task on timeout/error
+                taskData = {
+                    title: incomingMsg,
+                    priority: "medium",
+                    assigneeId: null,
+                    dueDate: todayIST
+                };
             }
         }
 
