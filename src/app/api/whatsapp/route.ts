@@ -31,133 +31,86 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-    const start = Date.now();
+    console.log('--- 📨 Incoming WhatsApp Webhook (Reverted to Sync) ---');
     try {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) throw new Error("GEMINI_API_KEY missing");
+
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({
+            model: "models/gemini-2.0-flash",
+            generationConfig: { responseMimeType: "application/json" }
+        });
+
         const formData = await req.formData();
         const incomingMsg = (formData.get('Body') as string) || '';
         const fromNumber = (formData.get('From') as string) || '';
         const number = fromNumber.replace('whatsapp:', '');
 
-        console.log(`📨 [${number}] Message: "${incomingMsg}"`);
+        const messagingResponse = new twilio.twiml.MessagingResponse();
 
-        // 1. Instant Acknowledgment to Twilio (Avoids 5s timeout)
-        const twiml = new twilio.twiml.MessagingResponse();
+        // 1. Find household
+        const householdsSnapshot = await adminDb.collection('households')
+            .where('userPhoneNumbers', 'array-contains', number)
+            .limit(1)
+            .get();
 
-        // --- ASYNC WORK START ---
-        // We use a promise wrapper that we DON'T await in the main thread
-        const processTask = async () => {
-            try {
-                const apiKey = process.env.GEMINI_API_KEY;
-                const sid = process.env.TWILIO_ACCOUNT_SID;
-                const token = process.env.TWILIO_AUTH_TOKEN;
-
-                if (!apiKey || !sid || !token) throw new Error("Missing Env Keys");
-
-                const client = twilio(sid, token);
-                const genAI = new GoogleGenerativeAI(apiKey);
-                const model = genAI.getGenerativeModel({
-                    model: "models/gemini-2.0-flash",
-                    generationConfig: { responseMimeType: "application/json" }
-                });
-
-                // 2. Lookup Household
-                const householdsSnapshot = await adminDb.collection('households')
-                    .where('userPhoneNumbers', 'array-contains', number)
-                    .limit(1).get();
-
-                if (householdsSnapshot.empty) {
-                    console.warn(`❌ [${number}] No household found.`);
-                    await client.messages.create({
-                        body: "🏡 Basera: We don't recognize this number. Please add it to your profile in the app first!",
-                        from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER || '+14155238886'}`,
-                        to: fromNumber
-                    });
-                    return;
-                }
-
-                const hDoc = householdsSnapshot.docs[0];
-                const hData = hDoc.data();
-                const user = hData.users?.find((u: any) => u.phoneNumber === number);
-                const householdId = hDoc.id;
-                console.log(`🏠 [${number}] Found Household: ${householdId}`);
-
-                const istDate = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-                // 3. AI Parsing
-                let taskData;
-                try {
-                    const userContext = (hData.users || []).map((u: any) => `${u.name}:${u.id}`).join(', ');
-                    const prompt = `Task: "${incomingMsg}". Date: ${istDate}. Users: ${userContext}. Sender: ${user?.name}. JSON: { title: string, priority: "high"|"medium"|"low", assigneeId: string|null, dueDate: YYYY-MM-DD }`;
-                    console.log(`🤖 [${number}] Sending to AI: ${prompt}`);
-
-                    const result = await model.generateContent(prompt);
-                    const aiResponseText = result.response.text();
-                    console.log(`✅ [${number}] AI Response: ${aiResponseText}`);
-                    taskData = JSON.parse(aiResponseText);
-                } catch (e: any) {
-                    console.warn(`⚠️ [${number}] AI Parsing Fallback: ${e.message}`);
-                    taskData = { title: incomingMsg, priority: 'medium', assigneeId: null, dueDate: istDate };
-                }
-
-                // 4. Save to DB
-                const taskId = Math.random().toString(36).substring(2, 11);
-                const newTask = {
-                    id: taskId, ...taskData,
-                    status: 'pending', createdAt: Date.now(), recurrence: 'none'
-                };
-                console.log(`💾 [${number}] Saving task ${taskId} to household ${householdId}:`, newTask);
-                await adminDb.collection('households').doc(householdId).collection('tasks').doc(taskId).set(newTask);
-                console.log(`✅ [${number}] Task saved.`);
-
-                // 5. Send Proactive WhatsApp Reply
-                let reply = `✅ *${newTask.title}* added!`;
-                if (newTask.priority === 'high') reply += `\n🚨 High Priority`;
-                if (newTask.assigneeId) {
-                    const assignee = hData.users.find((u: any) => u.id === newTask.assigneeId);
-                    if (assignee) reply += `\n👤 For: ${assignee.name}`;
-                }
-                console.log(`💬 [${number}] Sending proactive reply: ${reply}`);
-                await client.messages.create({
-                    body: reply,
-                    from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER || '+14155238886'}`,
-                    to: fromNumber
-                });
-                console.log(`✅ [${number}] Processed in ${Date.now() - start}ms`);
-            } catch (err: any) {
-                console.error(`💥 [${number}] Async Error:`, err.message);
-                // Optionally send an error message back to the user
-                const sid = process.env.TWILIO_ACCOUNT_SID;
-                const token = process.env.TWILIO_AUTH_TOKEN;
-                if (sid && token) {
-                    const client = twilio(sid, token);
-                    await client.messages.create({
-                        body: `⚠️ Basera: An error occurred while processing your request. Please try again. (${err.message})`,
-                        from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER || '+14155238886'}`,
-                        to: fromNumber
-                    }).catch(e => console.error(`Failed to send error message: ${e.message}`));
-                }
-            }
-        };
-
-        // Trigger the async work without awaiting it for the response
-        // On Vercel, we need to use waitUntil to prevent the function from dying
-        if ((req as any).waitUntil) {
-            (req as any).waitUntil(processTask());
-            console.log(`🚀 [${number}] waitUntil engaged.`);
-        } else {
-            // Fallback for local dev or environments without waitUntil
-            processTask();
-            console.log(`🚀 [${number}] processTask started without waitUntil.`);
+        if (householdsSnapshot.empty) {
+            messagingResponse.message("🏡 Basera: Please add your phone number to your profile in the app first!");
+            return new NextResponse(messagingResponse.toString(), { headers: { 'Content-Type': 'text/xml' } });
         }
 
-        // Return quickly to Twilio
-        return new NextResponse(twiml.toString(), {
+        const hDoc = householdsSnapshot.docs[0];
+        const hData = hDoc.data();
+        const user = hData.users?.find((u: any) => u.phoneNumber === number);
+        const householdId = hDoc.id;
+        const userId = user?.id || 'Shared';
+
+        const istDate = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+        // 2. AI Parsing (Synchronous, 4s Timeout)
+        let taskData;
+        try {
+            const userContext = (hData.users || []).map((u: any) => `${u.name}:${u.id}`).join(', ');
+            const prompt = `Task: "${incomingMsg}". Date: ${istDate}. Users: ${userContext}. Sender: ${user?.name}. JSON schema: { title, priority: "high"|"medium"|"low", assigneeId: string|null, dueDate: string }`;
+
+            const aiPromise = model.generateContent(prompt);
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 4000));
+
+            const result: any = await Promise.race([aiPromise, timeoutPromise]);
+            taskData = JSON.parse(result.response.text());
+        } catch (e: any) {
+            console.warn('⚠️ AI Timeout/Error, using fallback:', e.message);
+            taskData = { title: incomingMsg, priority: "medium", assigneeId: null, dueDate: istDate };
+        }
+
+        // 3. Save to Firestore
+        const taskId = Math.random().toString(36).substring(2, 11);
+        const newTask = {
+            id: taskId,
+            ...taskData,
+            status: 'pending',
+            createdAt: Date.now(),
+            recurrence: 'none'
+        };
+
+        await adminDb.collection('households').doc(householdId).collection('tasks').doc(taskId).set(newTask);
+
+        // 4. Return TwiML Reply
+        let responseMsg = `✅ Added: *${newTask.title}*`;
+        if (newTask.priority === 'high') responseMsg += `\n🚨 High Priority`;
+        if (newTask.assigneeId) {
+            const assignee = (hData.users || []).find((u: any) => u.id === newTask.assigneeId);
+            if (assignee) responseMsg += `\n👤 Assigned to: ${assignee.name}`;
+        }
+
+        messagingResponse.message(responseMsg);
+        return new NextResponse(messagingResponse.toString(), {
             headers: { 'Content-Type': 'text/xml' }
         });
 
     } catch (error: any) {
         console.error('💥 Webhook Error:', error);
-        // Return an empty TwiML response to Twilio to acknowledge receipt
         return new NextResponse('<Response/>', { headers: { 'Content-Type': 'text/xml' } });
     }
 }
