@@ -4,13 +4,9 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { User } from '@/types';
 import twilio from 'twilio';
 
-
-// Use gemini-2.0-flash based on your registry list
-const MODEL_NAME = "gemini-2.0-flash";
-
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
-    const code = searchParams.get('code') || 'test';
+    const code = searchParams.get('code') || 'KA5HX7';
 
     let tasks: any[] = [];
     try {
@@ -20,24 +16,24 @@ export async function GET(req: NextRequest) {
     } catch (e) { }
 
     return NextResponse.json({
-        diagnostics: "Basera Webhook Live",
+        status: "Basera Webhook Active",
+        household: code,
         recentTasks: tasks,
         env: {
             gemini: !!process.env.GEMINI_API_KEY,
             twilio: !!process.env.TWILIO_AUTH_TOKEN
-        },
-        timestamp: new Date().toISOString()
+        }
     });
 }
 
 export async function POST(req: NextRequest) {
-    console.log('--- 📨 Incoming WhatsApp Webhook (Nudges Logic) ---');
+    console.log('--- 📨 Incoming WhatsApp Webhook (Hybrid Parser) ---');
     try {
         const apiKey = process.env.GEMINI_API_KEY;
         const sid = process.env.TWILIO_ACCOUNT_SID;
         const token = process.env.TWILIO_AUTH_TOKEN;
 
-        if (!apiKey || !sid || !token) throw new Error("Missing Credentials (Gemini/Twilio)");
+        if (!apiKey || !sid || !token) throw new Error("Missing Credentials");
 
         const client = twilio(sid, token);
         const genAI = new GoogleGenerativeAI(apiKey);
@@ -53,8 +49,7 @@ export async function POST(req: NextRequest) {
 
         const messagingResponse = new twilio.twiml.MessagingResponse();
 
-
-        // 1. Find household
+        // 1. Find household by phone number
         const householdsSnapshot = await adminDb.collection('households')
             .where('userPhoneNumbers', 'array-contains', number)
             .limit(1)
@@ -74,22 +69,52 @@ export async function POST(req: NextRequest) {
         const istDate = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
 
         // 2. AI Parsing (Synchronous, 4s Timeout)
-        let taskData;
+        let taskData: any;
+        let rawAi = "";
         try {
             const userContext = (hData.users || []).map((u: any) => `${u.name} (ID: ${u.id})`).join(', ');
-            const prompt = `Task: "${incomingMsg}". Date: ${istDate}. Users: ${userContext}. Sender: ${user?.name || 'User'} (ID: ${userId}). 
-            Instruction: If "for [name]" or similar is mentioned, use their ID from the list. 
-            JSON schema: { title, priority: "high"|"medium"|"low", assigneeId: string|null, dueDate: string }`;
+            const prompt = `
+            Task Message: "${incomingMsg}"
+            Household Users: ${userContext}
+            Current Date: ${istDate}
+            Sender: ${user?.name || 'User'}
+
+            Instructions:
+            - Return JSON ONLY.
+            - Extract title (clean names like "for Avanya" out).
+            - Identify priority (high, medium, low).
+            - assigneeId: map names to IDs.
+            - dueDate: YYYY-MM-DD.
+            `;
 
             const aiPromise = model.generateContent(prompt);
             const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 4000));
 
             const result: any = await Promise.race([aiPromise, timeoutPromise]);
-            taskData = JSON.parse(result.response.text());
+            rawAi = (await result.response).text();
+            taskData = JSON.parse(rawAi);
         } catch (e: any) {
-            console.warn('⚠️ AI Timeout/Error, using fallback:', e.message);
+            console.warn('⚠️ AI Error/Timeout:', e.message);
             taskData = { title: incomingMsg, priority: "medium", assigneeId: null, dueDate: istDate };
         }
+
+        // --- HYBRID MATCHING (Code-based Backup) ---
+        // If the AI missed an assignment mentioned in text, we catch it here.
+        const lowerMsg = incomingMsg.toLowerCase();
+        (hData.users || []).forEach((u: any) => {
+            const name = u.name.toLowerCase();
+            if (lowerMsg.includes(name) && !taskData.assigneeId) {
+                console.log(`🧠 Code Match: Found ${u.name}`);
+                taskData.assigneeId = u.id;
+                // Basic title cleaning backup
+                taskData.title = taskData.title.replace(new RegExp(`assign to ${name}`, 'gi'), '').trim();
+                taskData.title = taskData.title.replace(new RegExp(`for ${name}`, 'gi'), '').trim();
+                taskData.title = taskData.title.replace(new RegExp(`${name}`, 'gi'), '').trim();
+            }
+        });
+
+        // Ensure title isn't empty after cleaning
+        if (!taskData.title || taskData.title.length < 2) taskData.title = incomingMsg;
 
         // 3. Save to Firestore
         const taskId = Math.random().toString(36).substring(2, 11);
@@ -98,17 +123,17 @@ export async function POST(req: NextRequest) {
             ...taskData,
             status: 'pending',
             createdAt: Date.now(),
-            recurrence: 'none'
+            recurrence: 'none',
+            metadata: { via: 'whatsapp', debug: rawAi.substring(0, 100) }
         };
 
         await adminDb.collection('households').doc(householdId).collection('tasks').doc(taskId).set(newTask);
 
-        // 4. Proactive Nudge to Assignee (if different from sender)
+        // 4. Proactive Nudge to Assignee
         if (newTask.assigneeId && newTask.assigneeId !== userId) {
             const assignee = (hData.users || []).find((u: any) => u.id === newTask.assigneeId);
             if (assignee && assignee.phoneNumber) {
                 try {
-                    console.log(`🚀 Sending nudge to ${assignee.name} (${assignee.phoneNumber})`);
                     await client.messages.create({
                         from: 'whatsapp:+14155238886', // Twilio Sandbox
                         to: `whatsapp:${assignee.phoneNumber}`,
@@ -120,17 +145,19 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // 5. Return TwiML Reply to Sender
+        // 5. Reply to Sender
         let responseMsg = `✅ Added: *${newTask.title}*`;
         if (newTask.priority === 'high') responseMsg += `\n🚨 High Priority`;
+
         if (newTask.assigneeId) {
             const assignee = (hData.users || []).find((u: any) => u.id === newTask.assigneeId);
-            if (assignee) responseMsg += `\n👤 Assigned to: ${assignee.name}`;
-            if (newTask.assigneeId !== userId && assignee) responseMsg += `\n🔔 I've nudged ${assignee.name} on WhatsApp!`;
+            if (assignee) {
+                responseMsg += `\n👤 Assigned to: ${assignee.name}`;
+                if (newTask.assigneeId !== userId) responseMsg += `\n🔔 Nudged them on WhatsApp!`;
+            }
         }
 
         messagingResponse.message(responseMsg);
-
         return new NextResponse(messagingResponse.toString(), {
             headers: { 'Content-Type': 'text/xml' }
         });
