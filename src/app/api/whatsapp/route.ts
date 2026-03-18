@@ -6,13 +6,24 @@ import twilio from 'twilio';
 // Use gemini-2.0-flash based on your registry list
 const MODEL_NAME = "gemini-2.0-flash";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+    const { searchParams } = new URL(req.url);
+    const code = searchParams.get('code') || 'KA5HX7';
+
+    let taskCount = 0;
+    try {
+        const snapshot = await adminDb.collection('households').doc(code).collection('tasks').get();
+        taskCount = snapshot.size;
+    } catch (e) { }
+
     const apiKey = process.env.GEMINI_API_KEY;
     return NextResponse.json({
-        diagnostics: "WhatsApp Webhook is Live - VERSION_BETA_2.0",
+        diagnostics: "Basera Webhook Status",
+        household: code,
+        dbTaskCount: taskCount,
         geminiKeyConfigured: !!apiKey,
         geminiKeyLength: apiKey?.length || 0,
-        modelTarget: MODEL_NAME,
+        modelTarget: "models/gemini-2.0-flash",
         timestamp: new Date().toISOString()
     });
 }
@@ -77,64 +88,64 @@ export async function POST(req: NextRequest) {
         // Find the specific user
         const user = hData.users?.find((u: any) => u.phoneNumber === number);
         const userId = user?.id || 'Shared';
-        console.log(`👤 Mapped to User ID: ${userId} (${user?.name || 'Unknown'})`);
+
+        // Helper for IST Date (YYYY-MM-DD)
+        const getISTDate = () => {
+            const date = new Date();
+            const offset = 5.5 * 60 * 60 * 1000;
+            const istDate = new Date(date.getTime() + offset);
+            return istDate.toISOString().split('T')[0];
+        };
+
+        const todayIST = getISTDate();
 
         // --- NEW: Fast Path (Bypass AI) ---
         let taskData;
         if (incomingMsg.toLowerCase().startsWith('fast:')) {
-            console.log('⚡ Fast path triggered (No AI)');
+            console.log('⚡ Fast path (IST):', todayIST);
             taskData = {
                 title: incomingMsg.substring(5).trim() || "Express Task",
                 priority: "medium",
                 assigneeId: userId,
-                dueDate: new Date().toISOString().split('T')[0]
+                dueDate: todayIST
             };
         } else {
-            // 2. Parse with Gemini (with 5s Timeout)
-            console.log('🤖 Parsing with Gemini...');
+            // 2. Parse with Gemini (with 3s Timeout)
+            console.log('🤖 Gemini parsing starting...');
             try {
-                const prompt = `Interpret the following text into a structured task for a household app. 
-            Text: "${incomingMsg}"
-            Today's Date: ${new Date().toLocaleDateString()}
-            Output JSON only: { "title": string, "priority": "high"|"medium"|"low", "assigneeId": string|null, "dueDate": "YYYY-MM-DD" }
-            If no priority mentioned, use "medium". If no date, use today. assigneeId should be "${userId}" if they say "me" or "I", otherwise null.`;
+                const prompt = `Task: "${incomingMsg}". Date: ${todayIST}. JSON: { "title": string, "priority": "high"|"medium"|"low", "assigneeId": "${userId}"|null, "dueDate": "YYYY-MM-DD" }`;
 
-                // Wrapper to prevent hanging
                 const aiPromise = model.generateContent(prompt);
-                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("AI Timeout (5s exceeded)")), 5000));
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("AI Timeout (3s)")), 3000));
 
                 const result: any = await Promise.race([aiPromise, timeoutPromise]);
-                const response = await result.response;
-                const text = response.text();
+                const text = (await result.response).text();
                 const taskDataRaw = text.replace(/```json|```/g, '').trim();
-                console.log('📝 Gemini Result:', taskDataRaw);
                 taskData = JSON.parse(taskDataRaw);
             } catch (aiError: any) {
-                console.error('❌ Gemini Error:', aiError.message);
-                messagingResponse.message(`🤖 AI Error: ${aiError.message}`);
-                return new NextResponse(messagingResponse.toString(), { headers: { 'Content-Type': 'text/xml' } });
+                console.warn('⚠️ Gemini Speed issue:', aiError.message);
+                // Fallback to basic task on timeout
+                taskData = { title: incomingMsg, priority: "medium", assigneeId: userId, dueDate: todayIST };
             }
         }
 
         // 3. Save to Firestore
         try {
-            console.log(`💾 Saving to DB: ${taskData.title}`);
+            const taskId = Math.random().toString(36).substring(2, 11);
+            console.log(`💾 Syncing Task: ${taskId} to ${householdId}`);
+
             const newTask = {
+                id: taskId,
                 ...taskData,
                 status: 'pending',
                 createdAt: Date.now(),
                 recurrence: 'none'
             };
 
-            console.log(`💾 Saving task to households/${householdId}/tasks...`);
-            const taskRef = await adminDb.collection('households').doc(householdId).collection('tasks').add(newTask);
-            console.log(`✅ Task saved with ID: ${taskRef.id}`);
-
-            // 4. Respond
-            const responseBody = `✅ Added to Basera: *${newTask.title}*\nPriority: ${newTask.priority}\nDue: ${newTask.dueDate}`;
-            messagingResponse.message(responseBody);
+            await adminDb.collection('households').doc(householdId).collection('tasks').doc(taskId).set(newTask);
+            messagingResponse.message(`✅ Added to Basera: *${newTask.title}*`);
         } catch (dbError: any) {
-            console.error('❌ Firestore Error:', dbError.message);
+            console.error('❌ DB Error:', dbError.message);
             messagingResponse.message(`💾 Database Error: ${dbError.message}`);
         }
 
