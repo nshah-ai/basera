@@ -199,8 +199,21 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                                 <ArrowRight className="w-5 h-5 text-textMuted" />
                             </button>
                         </div>
+
+                        <button
+                            onClick={() => {
+                                if (confirm("Clear all app data and start fresh?")) {
+                                    localStorage.clear();
+                                    window.location.reload();
+                                }
+                            }}
+                            className="mt-8 text-xs text-textMuted hover:text-red-500 transition-colors underline underline-offset-4"
+                        >
+                            Reset App Data
+                        </button>
                     </motion.div>
                 )}
+
 
                 {/* Create Flow: Step 0 (Self), Step 1 (Partner), Step 3 (Phone) */}
                 {mode === 'create' && step < 2 && step !== 3 && (

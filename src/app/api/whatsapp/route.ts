@@ -129,31 +129,39 @@ export async function POST(req: NextRequest) {
                 Task to parse: "${incomingMsg}"
 
                 Instructions:
-                1. Extract the title of the task.
-                2. Determine priority ("high", "medium", "low"). Defaults to "medium".
-                3. Assign to a member ID if mentioned (e.g. "for Avanya" or "assign to Nishad"). 
-                   - Look for names in the household members list.
-                   - If "me" or "I" is used, assign to Current User ID.
-                   - If no mention, set assigneeId to null.
-                4. Determine dueDate ("YYYY-MM-DD"). Defaults to Current Date.
-
-                Output JSON only: { "title": string, "priority": string, "assigneeId": string|null, "dueDate": string }`;
+                Return ONLY a JSON object. No explanation. No markdown.
+                {
+                  "title": "Clean concise task name",
+                  "priority": "high" | "medium" | "low",
+                  "assigneeId": "ID from list" | null,
+                  "dueDate": "YYYY-MM-DD"
+                }
+                - Map names (Avanya, etc) to their IDs.
+                - If "me" used, use ID: ${userId}.
+                - If high priority mentioned, use "high".
+                `;
 
                 const aiPromise = model.generateContent(prompt);
                 const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("AI Timeout (7s)")), 7000));
 
                 const result: any = await Promise.race([aiPromise, timeoutPromise]);
                 const text = (await result.response).text();
-                const taskDataRaw = text.replace(/```json|```/g, '').trim();
-                taskData = JSON.parse(taskDataRaw);
+
+                // Robust JSON extraction: look for the first '{' and last '}'
+                const jsonMatch = text.match(/\{[\s\S]*\}/);
+                if (!jsonMatch) throw new Error("No JSON found in AI response");
+
+                taskData = JSON.parse(jsonMatch[0]);
+                console.log('✅ Parsed Task Data:', taskData);
             } catch (aiError: any) {
                 console.warn('⚠️ Gemini Speed issue or parsing error:', aiError.message);
                 // Fallback to basic task on timeout/error
                 taskData = {
-                    title: incomingMsg,
+                    title: `Unparsed: ${incomingMsg}`,
                     priority: "medium",
                     assigneeId: null,
-                    dueDate: todayIST
+                    dueDate: todayIST,
+                    debug: aiError.message
                 };
             }
         }
@@ -163,17 +171,29 @@ export async function POST(req: NextRequest) {
             const taskId = Math.random().toString(36).substring(2, 11);
             console.log(`💾 Syncing Task: ${taskId} to ${householdId}`);
 
+            const { debug, ...finalTaskData } = taskData as any;
+
             const newTask = {
                 id: taskId,
-                ...taskData,
+                ...finalTaskData,
                 status: 'pending',
                 createdAt: Date.now(),
                 recurrence: 'none'
             };
 
             await adminDb.collection('households').doc(householdId).collection('tasks').doc(taskId).set(newTask);
-            messagingResponse.message(`✅ Added to Basera: *${newTask.title}*`);
+
+            let responseMsg = `✅ Added to Basera: *${newTask.title}*`;
+            if (newTask.priority === 'high') responseMsg += `\n🚨 *High Priority*`;
+            if (newTask.assigneeId) {
+                const assignee = (hData.users || []).find((u: any) => u.id === newTask.assigneeId);
+                if (assignee) responseMsg += `\n👤 Assigned to: ${assignee.name}`;
+            }
+            if (debug) responseMsg += `\n\n⚠️ _AI Fallback: ${debug}_`;
+
+            messagingResponse.message(responseMsg);
         } catch (dbError: any) {
+
             console.error('❌ DB Error:', dbError.message);
             messagingResponse.message(`💾 Database Error: ${dbError.message}`);
         }

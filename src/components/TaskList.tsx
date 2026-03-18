@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, CheckCircle2, Circle, Flag, Calendar, RefreshCw, Home, User } from 'lucide-react';
+import { Plus, CheckCircle2, Circle, Flag, Calendar, RefreshCw, Home, User, LogOut } from 'lucide-react';
 import { useTaskStore } from '@/store/useTaskStore';
 import { subscribeToTasks } from '@/lib/sync';
 import { TaskModal } from './TaskModal';
@@ -13,11 +13,20 @@ type ViewFilter = 'today' | 'thisWeek' | 'later';
 type AssigneeFilter = 'all' | 'me' | 'partner' | 'shared';
 
 export function TaskList() {
-    const { tasks, users, toggleTask, householdId, setTasks } = useTaskStore();
+    const { tasks, users, toggleTask, householdId, setTasks, setUsers, setHouseholdId, setCurrentUser } = useTaskStore();
     const [activeView, setActiveView] = useState<ViewFilter>('today');
     const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('all');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTask, setEditingTask] = useState<Task | null>(null);
+
+    const handleLogout = () => {
+        if (confirm("Are you sure you want to leave this household? This will reset your local data.")) {
+            setUsers([]);
+            setHouseholdId(null);
+            setCurrentUser(null);
+            window.location.reload(); // Force a fresh start
+        }
+    };
 
     useEffect(() => {
         console.log("📍 TaskList mounted. Syncing with household:", householdId);
@@ -128,13 +137,23 @@ export function TaskList() {
                                 </div>
                             ))}
                         </div>
-                        {householdId && (
-                            <div className="flex items-center gap-2 bg-surface rounded-full px-3 py-1 text-xs text-textMuted border border-border shadow-sm">
-                                <span>Code: <strong className="text-textMain tracking-widest">{householdId}</strong></span>
-                            </div>
-                        )}
+                        <div className="flex items-center gap-2">
+                            {householdId && (
+                                <div className="flex items-center gap-2 bg-surface rounded-full px-3 py-1 text-xs text-textMuted border border-border shadow-sm">
+                                    <span>Code: <strong className="text-textMain tracking-widest">{householdId}</strong></span>
+                                </div>
+                            )}
+                            <button
+                                onClick={handleLogout}
+                                className="p-1.5 bg-surface border border-border rounded-full text-textMuted hover:text-red-500 transition-colors shadow-sm"
+                                title="Leave Household"
+                            >
+                                <LogOut className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
                     </div>
                 </div>
+
 
                 {/* View Tabs */}
                 <div className="flex gap-2 bg-surface border border-border p-1 rounded-2xl mb-3 shadow-sm">
