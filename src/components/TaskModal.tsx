@@ -34,13 +34,17 @@ export function TaskModal({ isOpen, onClose, editTask }: TaskModalProps) {
             const today = new Date();
             const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-            if (dueDate.toDateString() === today.toDateString()) {
+            if (dueDate < today) {
+                // If overdue, default to 'today' for rescheduling
+                setDeadline('today');
+            } else if (dueDate.toDateString() === today.toDateString()) {
                 setDeadline('today');
             } else if (dueDate <= weekFromNow) {
                 setDeadline('thisWeek');
             } else {
                 setDeadline('later');
             }
+
         } else {
             // Reset form for new task
             setTitle('');

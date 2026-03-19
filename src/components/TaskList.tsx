@@ -19,6 +19,10 @@ export function TaskList() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTask, setEditingTask] = useState<Task | null>(null);
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+
     const handleLogout = () => {
         if (confirm("Are you sure you want to leave this household? This will reset your local data.")) {
             setUsers([]);
@@ -51,54 +55,54 @@ export function TaskList() {
         return 'text-textMuted';
     };
 
-    const filteredTasks = tasks.filter(task => {
-        // Hide completed tasks older than 1 day
+    // Internal Logic
+    const rawFilteredTasks = tasks.filter(task => {
         if (task.status === 'completed') {
             const completedTime = task.completedAt || task.createdAt;
-            if (Date.now() - completedTime > 24 * 60 * 60 * 1000) {
-                return false;
-            }
+            if (Date.now() - completedTime > 24 * 60 * 60 * 1000) return false;
         }
+        return true;
+    });
 
-        const taskDate = new Date(task.dueDate);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+    const backlogTasks = activeView === 'today'
+        ? rawFilteredTasks.filter(t => new Date(t.dueDate) < today && t.status === 'pending')
+        : [];
 
-        // weekFromNow should be exactly 7 days from today, at the end of the day.
+    const mainTasks = rawFilteredTasks.filter(t => {
+        const taskDate = new Date(t.dueDate);
         const weekFromNow = new Date(today.getTime());
         weekFromNow.setDate(today.getDate() + 7);
         weekFromNow.setHours(23, 59, 59, 999);
+        const startOfTomorrow = new Date(today.getTime());
+        startOfTomorrow.setDate(today.getDate() + 1);
 
-        // View filter
-        let matchesView = false;
-        if (activeView === 'today') {
-            matchesView = taskDate.toDateString() === today.toDateString();
-        } else if (activeView === 'thisWeek') {
-            matchesView = taskDate > today && taskDate <= weekFromNow;
-        } else {
-            matchesView = taskDate > weekFromNow;
-        }
-
-        // Assignee filter
-        let matchesAssignee = true;
-        if (assigneeFilter === 'me' && users.length > 0) {
-            matchesAssignee = task.assigneeId === users[0].id;
-        } else if (assigneeFilter === 'partner' && users.length > 1) {
-            matchesAssignee = task.assigneeId === users[1].id;
-        } else if (assigneeFilter === 'shared') {
-            matchesAssignee = task.assigneeId === null;
-        }
-
-        return matchesView && matchesAssignee;
-    }).sort((a, b) => {
-        // Sort incomplete tasks above completed tasks
-        if (a.status === 'pending' && b.status === 'completed') return -1;
-        if (a.status === 'completed' && b.status === 'pending') return 1;
-        // If same status, sort by due date
-        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        if (activeView === 'today') return taskDate >= today && taskDate < startOfTomorrow;
+        if (activeView === 'thisWeek') return taskDate >= startOfTomorrow && taskDate <= weekFromNow;
+        return taskDate > weekFromNow;
+    }).filter(t => {
+        if (assigneeFilter === 'me' && users.length > 0) return t.assigneeId === users[0].id;
+        if (assigneeFilter === 'partner' && users.length > 1) return t.assigneeId === users[1].id;
+        if (assigneeFilter === 'shared') return t.assigneeId === null;
+        return true;
     });
 
-    const pendingCount = filteredTasks.filter(t => t.status === 'pending').length;
+    const sortedTodayTasks = [...mainTasks].sort((a, b) => {
+        const pMap = { high: 3, medium: 2, low: 1 };
+        const scoreA = pMap[a.priority as keyof typeof pMap];
+        const scoreB = pMap[b.priority as keyof typeof pMap];
+        if (scoreA !== scoreB) return scoreB - scoreA;
+
+        // Priority Equal: Native Today tasks (created today) win over Snoozed
+        const isNativeA = new Date(a.createdAt).toDateString() === today.toDateString();
+        const isNativeB = new Date(b.createdAt).toDateString() === today.toDateString();
+        if (isNativeA && !isNativeB) return -1;
+        if (!isNativeA && isNativeB) return 1;
+
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
+
+    const pendingCount = sortedTodayTasks.filter(t => t.status === 'pending').length + backlogTasks.length;
+
 
     const handleTaskClick = (task: Task) => {
         setEditingTask(task);
@@ -224,8 +228,11 @@ export function TaskList() {
             {/* Task List */}
             <div className="flex-1 overflow-y-auto px-6 pb-24">
                 <AnimatePresence mode="popLayout">
-                    {filteredTasks.map((task, index) => {
+                    {sortedTodayTasks.map((task, index) => {
+
                         const assignee = users.find(u => u.id === task.assigneeId);
+                        const taskDate = new Date(task.dueDate);
+
 
                         return (
                             <motion.div
@@ -289,10 +296,26 @@ export function TaskList() {
                                                     <Flag className={`w-3.5 h-3.5 ${getPriorityColor(task.priority)}`} />
                                                     <span className="capitalize">{task.priority}</span>
                                                 </div>
-                                                <div className="flex items-center gap-1">
-                                                    <Calendar className="w-3.5 h-3.5" />
-                                                    <span>{new Date(task.dueDate).toLocaleDateString()}</span>
+                                                <div className="flex items-center gap-1 group">
+                                                    <Calendar className={`w-3.5 h-3.5 ${taskDate < today && task.status === 'pending' ? 'text-red-500' : ''}`} />
+                                                    <span className={taskDate < today && task.status === 'pending' ? 'text-red-500 font-semibold text-[10px]' : ''}>
+                                                        {taskDate < today && task.status === 'pending' ? 'Overdue' : new Date(task.dueDate).toLocaleDateString()}
+                                                    </span>
+                                                    {taskDate < today && task.status === 'pending' && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                useTaskStore.getState().updateTask(task.id, { dueDate: new Date().toISOString() });
+                                                            }}
+                                                            className="ml-1 p-1 bg-red-50 text-red-500 rounded-md hover:bg-red-100 transition-colors flex items-center gap-1 text-[9px] font-bold"
+                                                            title="Move to Today"
+                                                        >
+                                                            <RefreshCw className="w-2.5 h-2.5" />
+                                                            Snooze to Today
+                                                        </button>
+                                                    )}
                                                 </div>
+
                                                 {task.recurrence !== 'none' && (
                                                     <div className="flex items-center gap-1">
                                                         <RefreshCw className="w-3.5 h-3.5 text-sage" />
@@ -300,6 +323,7 @@ export function TaskList() {
                                                     </div>
                                                 )}
                                             </div>
+
                                         </div>
                                     </div>
                                 </div>
@@ -308,7 +332,82 @@ export function TaskList() {
                     })}
                 </AnimatePresence>
 
-                {filteredTasks.length === 0 && (
+                {/* Backlog Section */}
+                {backlogTasks.length > 0 && activeView === 'today' && (
+                    <div className="mt-12 bg-surface/30 rounded-3xl p-4 border border-border/50">
+                        <div className="flex items-center justify-between mb-4 px-2">
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold uppercase tracking-wider text-textMuted/60">Backlog ({backlogTasks.length})</span>
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => {
+                                        if (confirm(`Snooze all ${backlogTasks.length} tasks to today?`)) {
+                                            backlogTasks.forEach(t => useTaskStore.getState().updateTask(t.id, { dueDate: new Date().toISOString() }));
+                                        }
+                                    }}
+                                    className="text-[10px] font-bold text-sage hover:text-sage/80 transition-colors bg-sage/10 px-2 py-1 rounded-lg"
+                                >
+                                    Snooze All
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        if (confirm(`Kill all ${backlogTasks.length} tasks (mark as done)?`)) {
+                                            backlogTasks.forEach(t => useTaskStore.getState().toggleTask(t.id, 'pending'));
+                                        }
+                                    }}
+                                    className="text-[10px] font-bold text-red-400 hover:text-red-500 transition-colors bg-red-400/10 px-2 py-1 rounded-lg"
+                                >
+                                    Kill All
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            {backlogTasks.map((task, index) => {
+                                const taskDate = new Date(task.dueDate);
+                                return (
+                                    <motion.div
+                                        key={task.id}
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className="bg-background/40 border border-border/30 rounded-xl p-3 flex items-center justify-between group"
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${getPriorityColor(task.priority).replace('text-', 'bg-')}`} />
+                                            <div className="min-w-0">
+                                                <p className="text-sm text-textMain/80 truncate font-medium">{task.title}</p>
+                                                <p className="text-[10px] text-red-400/70 font-semibold">Overdue • {taskDate.toLocaleDateString()}</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-1">
+                                            <button
+                                                onClick={() => useTaskStore.getState().updateTask(task.id, { dueDate: new Date().toISOString() })}
+                                                className="p-1.5 hover:bg-sage/10 rounded-md text-sage transition-colors"
+                                                title="Snooze"
+                                            >
+                                                <RefreshCw className="w-3 h-3" />
+                                            </button>
+                                            <button
+                                                onClick={() => useTaskStore.getState().toggleTask(task.id, 'pending')}
+                                                className="p-1.5 hover:bg-red-400/10 rounded-md text-red-400 transition-colors"
+                                                title="Kill"
+                                            >
+                                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    </motion.div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+
+                {sortedTodayTasks.length === 0 && backlogTasks.length === 0 && (
+
+
                     <div className="text-center py-16">
                         <div className="w-16 h-16 bg-surface border border-border rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
                             <CheckCircle2 className="w-8 h-8 text-sage" />
