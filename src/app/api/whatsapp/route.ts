@@ -68,23 +68,42 @@ export async function POST(req: NextRequest) {
 
         const istDate = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-        // 2. AI Parsing (Synchronous, 4s Timeout)
-        let taskData: any;
+        // 2. Fetch Recent Pending Tasks for Context
+        const recentTasksSnapshot = await adminDb.collection('households')
+            .doc(householdId).collection('tasks')
+            .where('status', '==', 'pending')
+            .orderBy('createdAt', 'desc')
+            .limit(10)
+            .get();
+        const pendingTasks = recentTasksSnapshot.docs.map(doc => ({ id: doc.id, title: doc.data().title }));
+
+        // 3. AI Parsing (Synchronous, 4s Timeout)
+        let aiResult: any;
         let rawAi = "";
         try {
             const userContext = (hData.users || []).map((u: any) => `${u.name} (ID: ${u.id})`).join(', ');
-            const prompt = `
-            Task Message: "${incomingMsg}"
-            Household Users: ${userContext}
-            Current Date: ${istDate}
-            Sender: ${user?.name || 'User'}
+            const taskContext = pendingTasks.map(t => `- "${t.title}" (ID: ${t.id})`).join('\n');
 
-            Instructions:
-            - Return JSON ONLY.
-            - Extract title (clean names like "for Avanya" out).
-            - Identify priority (high, medium, low).
-            - assigneeId: map names to IDs.
-            - dueDate: YYYY-MM-DD.
+            const prompt = `
+            Context:
+            - Message: "${incomingMsg}"
+            - Household Users: ${userContext}
+            - Pending Tasks:
+            ${taskContext || 'None'}
+            - Current Date: ${istDate}
+            - Sender: ${user?.name || 'User'}
+
+            Task:
+            Decide if the user wants to ADD a new task or COMPLETE an existing one.
+            Return JSON:
+            {
+              "intent": "CREATE" | "COMPLETE",
+              "taskId": "ID of matched task if COMPLETE",
+              "title": "Clean title",
+              "priority": "high" | "medium" | "low",
+              "assigneeId": "ID",
+              "dueDate": "YYYY-MM-DD"
+            }
             `;
 
             const aiPromise = model.generateContent(prompt);
@@ -92,31 +111,35 @@ export async function POST(req: NextRequest) {
 
             const result: any = await Promise.race([aiPromise, timeoutPromise]);
             rawAi = (await result.response).text();
-            taskData = JSON.parse(rawAi);
+            aiResult = JSON.parse(rawAi);
         } catch (e: any) {
             console.warn('⚠️ AI Error/Timeout:', e.message);
-            taskData = { title: incomingMsg, priority: "medium", assigneeId: null, dueDate: istDate };
+            aiResult = { intent: "CREATE", title: incomingMsg, priority: "medium", assigneeId: null, dueDate: istDate };
         }
 
-        // --- HYBRID MATCHING (Code-based Backup) ---
-        // If the AI missed an assignment mentioned in text, we catch it here.
+        // --- Intent Handling ---
+        if (aiResult.intent === 'COMPLETE' && aiResult.taskId) {
+            await adminDb.collection('households').doc(householdId).collection('tasks').doc(aiResult.taskId).update({
+                status: 'completed',
+                completedAt: Date.now()
+            });
+
+            messagingResponse.message(`✅ Marked as Done: *${aiResult.title || 'Task'}*`);
+            return new NextResponse(messagingResponse.toString(), { headers: { 'Content-Type': 'text/xml' } });
+        }
+
+        // --- Proceed with CREATE logic ---
+        const taskData = aiResult;
         const lowerMsg = incomingMsg.toLowerCase();
         (hData.users || []).forEach((u: any) => {
             const name = u.name.toLowerCase();
             if (lowerMsg.includes(name) && !taskData.assigneeId) {
-                console.log(`🧠 Code Match: Found ${u.name}`);
                 taskData.assigneeId = u.id;
-                // Basic title cleaning backup
-                taskData.title = taskData.title.replace(new RegExp(`assign to ${name}`, 'gi'), '').trim();
-                taskData.title = taskData.title.replace(new RegExp(`for ${name}`, 'gi'), '').trim();
-                taskData.title = taskData.title.replace(new RegExp(`${name}`, 'gi'), '').trim();
             }
         });
 
-        // Ensure title isn't empty after cleaning
         if (!taskData.title || taskData.title.length < 2) taskData.title = incomingMsg;
 
-        // 3. Save to Firestore
         const taskId = Math.random().toString(36).substring(2, 11);
         const newTask = {
             id: taskId,
@@ -128,6 +151,7 @@ export async function POST(req: NextRequest) {
         };
 
         await adminDb.collection('households').doc(householdId).collection('tasks').doc(taskId).set(newTask);
+
 
         // 4. Proactive Nudge to Assignee
         if (newTask.assigneeId && newTask.assigneeId !== userId) {
