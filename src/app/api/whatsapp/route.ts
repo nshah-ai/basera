@@ -68,14 +68,22 @@ export async function POST(req: NextRequest) {
 
         const istDate = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-        // 2. Fetch Recent Pending Tasks for Context
-        const recentTasksSnapshot = await adminDb.collection('households')
-            .doc(householdId).collection('tasks')
-            .where('status', '==', 'pending')
-            .orderBy('createdAt', 'desc')
-            .limit(10)
-            .get();
-        const pendingTasks = recentTasksSnapshot.docs.map(doc => ({ id: doc.id, title: doc.data().title }));
+        // 2. Fetch Recent Pending Tasks for Context (Index-free approach)
+        let pendingTasks: any[] = [];
+        try {
+            const recentTasksSnapshot = await adminDb.collection('households')
+                .doc(householdId).collection('tasks')
+                .orderBy('createdAt', 'desc')
+                .limit(20)
+                .get();
+
+            pendingTasks = recentTasksSnapshot.docs
+                .map(doc => ({ id: doc.id, title: doc.data().title, status: doc.data().status }))
+                .filter(t => t.status === 'pending')
+                .slice(0, 10);
+        } catch (e) {
+            console.error('❌ Context Fetch Error:', e);
+        }
 
         // 3. AI Parsing (Synchronous, 4s Timeout)
         let aiResult: any;
@@ -94,7 +102,8 @@ export async function POST(req: NextRequest) {
             - Sender: ${user?.name || 'User'}
 
             Task:
-            Decide if the user wants to ADD a new task or COMPLETE an existing one.
+            Decide if the user wants to ADD a new task or COMPLETE an existing one. For simple additions like "buy milk", use CREATE. Only use COMPLETE if they explicitly say they are done or finished or marking something as done.
+            
             Return JSON:
             {
               "intent": "CREATE" | "COMPLETE",
@@ -111,7 +120,10 @@ export async function POST(req: NextRequest) {
 
             const result: any = await Promise.race([aiPromise, timeoutPromise]);
             rawAi = (await result.response).text();
-            aiResult = JSON.parse(rawAi);
+
+            // Basic JSON cleaning in case AI includes md blocks
+            const cleanJson = rawAi.replace(/```json/g, '').replace(/```/g, '').trim();
+            aiResult = JSON.parse(cleanJson);
         } catch (e: any) {
             console.warn('⚠️ AI Error/Timeout:', e.message);
             aiResult = { intent: "CREATE", title: incomingMsg, priority: "medium", assigneeId: null, dueDate: istDate };
