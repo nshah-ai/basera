@@ -49,10 +49,9 @@ export async function POST(req: NextRequest) {
 
         const messagingResponse = new twilio.twiml.MessagingResponse();
 
-        // 1. Find household by phone number
+        // 1. Find all households by phone number
         const householdsSnapshot = await adminDb.collection('households')
             .where('userPhoneNumbers', 'array-contains', number)
-            .limit(1)
             .get();
 
         if (householdsSnapshot.empty) {
@@ -60,11 +59,32 @@ export async function POST(req: NextRequest) {
             return new NextResponse(messagingResponse.toString(), { headers: { 'Content-Type': 'text/xml' } });
         }
 
-        const hDoc = householdsSnapshot.docs[0];
+        // Pick the most recently created household
+        const sortedDocs = householdsSnapshot.docs.sort((a, b) => {
+            const timeA = a.data().createdAt?.toMillis() || 0;
+            const timeB = b.data().createdAt?.toMillis() || 0;
+            return timeB - timeA;
+        });
+
+        const hDoc = sortedDocs[0];
         const hData = hDoc.data();
         const user = hData.users?.find((u: any) => u.phoneNumber === number);
         const householdId = hDoc.id;
         const userId = user?.id || 'Shared';
+
+        // 1b. Handle Debug Commands (status, whoami)
+        const cleanMsg = incomingMsg.toLowerCase().trim();
+        if (cleanMsg === 'status' || cleanMsg === 'whoami' || cleanMsg === 'debug') {
+            const statusMsg = `🏠 *Basera Status*\n\n` +
+                `📍 Household: *${householdId}*\n` +
+                `👤 Profile: *${user?.name || 'Unknown'}*\n` +
+                `✅ Connection: Active\n\n` +
+                `Try adding a task like: "Buy mangoes high priority"`;
+
+            messagingResponse.message(statusMsg);
+            return new NextResponse(messagingResponse.toString(), { headers: { 'Content-Type': 'text/xml' } });
+        }
+
 
         const istDate = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
 
