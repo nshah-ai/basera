@@ -326,10 +326,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                                 </div>
                             )}
 
-                            <p className="text-[10px] text-textMuted px-2 italic text-center">
-                                *Optional. You can skip or add these later.
-                            </p>
                         </div>
+
 
 
                         <button
