@@ -83,9 +83,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                 setCurrentUser(newUsers[0].id); // Creator is the first user
 
                 setStep(2); // Success step
-                setTimeout(() => {
-                    onComplete();
-                }, 1500);
+                // No automatic checkout - let user see the share button
+
             } catch (err) {
                 console.error(err);
                 setError("Failed to create household. Please try again.");
@@ -139,9 +138,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
             setCurrentUser(selectedUserId);
 
             setStep(2); // Success step
-            setTimeout(() => {
-                onComplete();
-            }, 1500);
+            // No automatic checkout
+
         } catch (err) {
             console.error(err);
             setError("Failed to join. Please try again.");
@@ -319,9 +317,11 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                                         type="tel"
                                         value={partnerPhoneNumber}
                                         onChange={(e) => setPartnerPhoneNumber(e.target.value)}
+                                        onKeyPress={(e) => e.key === 'Enter' && (mode === 'create' ? handleCreateContinue() : handleFinishJoin())}
                                         placeholder="+1234567890"
                                         disabled={isProcessing}
                                         className="w-full bg-surface border border-border rounded-2xl px-6 py-4 text-textMain placeholder-textMuted focus:outline-none focus:border-primary transition-all shadow-sm"
+
                                     />
                                 </div>
                             )}
