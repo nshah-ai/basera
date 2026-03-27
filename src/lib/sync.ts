@@ -46,7 +46,9 @@ export const createHousehold = async (users: User[]): Promise<string> => {
 
     console.log(`📡 Creating household: ${householdId}`);
 
+    // Map phone numbers from all users during creation
     const userPhoneNumbers = users.map(u => u.phoneNumber).filter(p => !!p);
+
     const writePromise = setDoc(doc(db, 'households', householdId), {
         users,
         userPhoneNumbers,
@@ -62,6 +64,7 @@ export const createHousehold = async (users: User[]): Promise<string> => {
     console.log(`✅ Household ${householdId} created successfully.`);
     return householdId;
 };
+
 
 export const joinHousehold = async (householdId: string): Promise<User[] | null> => {
     const docRef = doc(db, 'households', householdId.toUpperCase());
@@ -169,6 +172,7 @@ export const updateUserProfile = async (householdId: string, userId: string, upd
         return u;
     });
 
+    // CRITICAL: Keep phone numbers array in sync for WhatsApp bot lookup
     const userPhoneNumbers = updatedUsers.map(u => u.phoneNumber).filter(p => !!p);
 
     await updateDoc(docRef, {
@@ -178,4 +182,5 @@ export const updateUserProfile = async (householdId: string, userId: string, upd
 
     return updatedUsers;
 };
+
 

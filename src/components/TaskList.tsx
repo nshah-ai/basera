@@ -8,6 +8,8 @@ import { subscribeToTasks } from '@/lib/sync';
 import { TaskModal } from './TaskModal';
 import { Task } from '@/types';
 import { useEffect } from 'react';
+import { UserEditModal } from './UserEditModal';
+
 
 type ViewFilter = 'today' | 'thisWeek' | 'later';
 type AssigneeFilter = 'all' | 'me' | 'partner' | 'shared';
@@ -17,7 +19,10 @@ export function TaskList() {
     const [activeView, setActiveView] = useState<ViewFilter>('today');
     const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('all');
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isUserModalOpen, setIsUserModalOpen] = useState(false);
     const [editingTask, setEditingTask] = useState<Task | null>(null);
+    const [selectedUserForEdit, setSelectedUserForEdit] = useState<any | null>(null);
+
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -132,15 +137,21 @@ export function TaskList() {
                     <div className="flex flex-col items-end gap-2">
                         <div className="flex gap-2">
                             {users.map(user => (
-                                <div
+                                <button
                                     key={user.id}
-                                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-sm"
+                                    onClick={() => {
+                                        setSelectedUserForEdit(user);
+                                        setIsUserModalOpen(true);
+                                    }}
+                                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-sm hover:scale-110 active:scale-95 transition-all"
                                     style={{ backgroundColor: user.avatarColor }}
+                                    title={`Edit ${user.name}`}
                                 >
                                     {getInitials(user.name)}
-                                </div>
+                                </button>
                             ))}
                         </div>
+
                         <div className="flex items-center gap-2">
                             {householdId && (
                                 <div className="flex items-center gap-2 bg-surface rounded-full px-3 py-1 text-xs text-textMuted border border-border shadow-sm">
@@ -449,6 +460,24 @@ export function TaskList() {
                 onClose={handleCloseModal}
                 editTask={editingTask}
             />
+
+            {/* User Edit Modal */}
+            <AnimatePresence>
+                {isUserModalOpen && selectedUserForEdit && (
+                    <UserEditModal
+                        user={selectedUserForEdit}
+                        householdId={householdId || ''}
+                        onClose={() => {
+                            setIsUserModalOpen(false);
+                            setSelectedUserForEdit(null);
+                        }}
+                        onUpdate={(updatedUsers) => {
+                            setUsers(updatedUsers);
+                        }}
+                    />
+                )}
+            </AnimatePresence>
         </div>
+
     );
 }
