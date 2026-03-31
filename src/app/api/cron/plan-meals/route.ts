@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import twilio from 'twilio';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { FieldValue } from 'firebase-admin/firestore';
+import { generateContentWithFallback } from '@/lib/gemini';
+
+
 
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -50,49 +52,13 @@ export async function GET(req: NextRequest) {
             cookSkillLevel: u.cookSkillLevel || 'medium'
         }));
 
-        // 2. Generate Options via Gemini
-        const model = genAI.getGenerativeModel({
-            model: "gemini-2.0-flash",
-            generationConfig: { responseMimeType: "application/json" }
-        });
-
-
-
+        // 2. Generate Options via Gemini Fallback
         const prompt = `
-You are an expert Indian home chef and meal planner. 
-Plan 2 distinct daily meal options (Breakfast, Lunch, Dinner) for tomorrow.
-
-Consider these user preferences:
-${JSON.stringify(preferences, null, 2)}
-
-And avoid repeating these recent meals:
-${JSON.stringify(recentMeals, null, 2)}
-
-Return ONLY a JSON object matching this schema:
-{
-  "options": [
-    {
-      "id": "option1",
-      "meals": {
-        "breakfast": { "name": "Meal name", "ingredients": ["ing1", "ing2"] },
-        "lunch": { "name": "Meal name", "ingredients": ["ing1", "ing2"] },
-        "dinner": { "name": "Meal name", "ingredients": ["ing1", "ing2"] }
-      }
-    },
-    {
-      "id": "option2",
-      "meals": {
-        "breakfast": { "name": "...", "ingredients": ["..."] },
-        "lunch": { "name": "...", "ingredients": ["..."] },
-        "dinner": { "name": "...", "ingredients": ["..."] }
-      }
-    }
-  ]
-}
+You are an expert Indian home chef and meal planner...
 `;
-        const result = await model.generateContent(prompt);
-        const responseText = result.response.text();
+        const responseText = await generateContentWithFallback(prompt, "application/json");
         const generatedData = JSON.parse(responseText);
+
 
         // 3. Save to Firestore
         // Get tomorrow's date YYYY-MM-DD

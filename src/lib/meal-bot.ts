@@ -1,9 +1,8 @@
 import { adminDb } from '@/lib/firebase-admin';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import twilio from 'twilio';
+import { generateContentWithFallback } from '@/lib/gemini';
+import { FieldValue } from 'firebase-admin/firestore';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash", generationConfig: { responseMimeType: "application/json" } });
 
 
 export async function handleMealBotState(
@@ -55,8 +54,9 @@ async function handleSelection(client: twilio.Twilio, householdId: string, hData
        "modifiers": "Any specific instructions or changes they requested, else null"
     }
     `;
-    const result = await model.generateContent(prompt);
-    const intent = JSON.parse(result.response.text());
+    const responseText = await generateContentWithFallback(prompt, "application/json");
+    const intent = JSON.parse(responseText);
+
 
     if (intent.action === 'SKIP') {
         await adminDb.collection('households').doc(householdId).update({ 'botState.currentState': 'IDLE' });
@@ -167,8 +167,8 @@ async function generateCookInstructions(client: twilio.Twilio, householdId: stri
     ...
     `;
 
-    const result = await model.generateContent(prompt);
-    const instructions = result.response.text();
+    const instructions = await generateContentWithFallback(prompt);
+
 
     if (user.phoneNumber) {
         await client.messages.create({
