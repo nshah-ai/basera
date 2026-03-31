@@ -56,11 +56,13 @@ export async function GET(req: NextRequest) {
         const prompt = `
 You are an expert Indian home chef and meal planner...
 `;
+        const responseText = await generateContentWithFallback(prompt, "application/json");
         let generatedData: any = {};
         try {
             // Strip markdown formatting if present
             const cleanText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
             generatedData = JSON.parse(cleanText);
+
         } catch (e: any) {
             console.error("JSON Parse Error on Gemini Output:", responseText);
             throw new Error("Failed to parse AI meal suggestions into JSON.");
