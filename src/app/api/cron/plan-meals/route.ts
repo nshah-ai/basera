@@ -133,6 +133,15 @@ SCHEMA:
         }
 
 
+        // FORCE IDs: Ensure each option has id: "option1", "option2" etc.
+        // This prevents crashes in generateCookInstructions if the AI omitted IDs.
+        const sanitizedOptions = optionsToSave.map((opt: any, index: number) => ({
+            ...opt,
+            id: `option${index + 1}`
+        }));
+
+
+
 
 
 
@@ -146,10 +155,11 @@ SCHEMA:
         await mealLogRef.set({
             id: dateStr,
             date: dateStr,
-            suggestedOptions: optionsToSave,
+            suggestedOptions: sanitizedOptions,
 
             createdAt: FieldValue.serverTimestamp()
         }, { merge: true });
+
 
         // Update Bot State
         await hDoc.ref.update({
@@ -165,13 +175,14 @@ SCHEMA:
 
         let msgBody = `🥘 *Time to plan meals for tomorrow, ${formattedDate}!*\n\n`;
 
-        optionsToSave.forEach((opt: any, index: number) => {
-
+        sanitizedOptions.forEach((opt: any, index: number) => {
             msgBody += `*Option ${index + 1}:*\n`;
-            msgBody += `- 🍳 B: ${opt.meals.breakfast.name}\n`;
-            msgBody += `- 🍛 L: ${opt.meals.lunch.name}\n`;
-            msgBody += `- 🍲 D: ${opt.meals.dinner.name}\n\n`;
+            msgBody += `- 🍳 B: ${opt.meals?.breakfast?.name || 'Planned'}\n`;
+            msgBody += `- 🍛 L: ${opt.meals?.lunch?.name || 'Planned'}\n`;
+            msgBody += `- 🍲 D: ${opt.meals?.dinner?.name || 'Planned'}\n\n`;
         });
+
+
         msgBody += `Reply *1*, *2*, *Change*, or *Skip*.\n_(You can add notes like "1 but breakfast for 1 person")_`;
 
         let messagesSent = 0;

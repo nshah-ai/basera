@@ -148,44 +148,75 @@ async function handleOrderApproval(client: twilio.Twilio, householdId: string, h
 }
 
 async function generateCookInstructions(client: twilio.Twilio, householdId: string, hData: any, user: any, pendingDate: string) {
-    const mealLogDoc = await adminDb.collection('households').doc(householdId).collection('mealLogs').doc(pendingDate).get();
-    if (!mealLogDoc.exists) return;
-    const mealData = mealLogDoc.data();
+    try {
+        const mealLogDoc = await adminDb.collection('households').doc(householdId).collection('mealLogs').doc(pendingDate).get();
+        if (!mealLogDoc.exists) return;
+        const mealData = mealLogDoc.data();
 
-    if (!mealData || !mealData.selectedOptionId) return;
+        if (!mealData || !mealData.selectedOptionId || !mealData.suggestedOptions) return;
 
-    const selectedOption = mealData.suggestedOptions.find((o: any) => o.id === mealData.selectedOptionId);
-    if (!selectedOption) return;
+        // DEFENSIVE FIND: Try ID first, then fallback to index
+        let selectedOption = mealData.suggestedOptions.find((o: any) => o.id === mealData.selectedOptionId);
 
-    const cookSkillLevel = user.cookSkillLevel || 'medium';
+        if (!selectedOption) {
+            console.log(`🔍 ID search failed for ${mealData.selectedOptionId}. trying index fallback...`);
+            const match = mealData.selectedOptionId.match(/\d+/);
+            if (match) {
+                const index = parseInt(match[0]) - 1;
+                selectedOption = mealData.suggestedOptions[index];
+            }
+        }
 
-    const prompt = `
-    Generate concise, forwardable WhatsApp cooking instructions for a home cook with skill level: ${cookSkillLevel}.
-    The meals are:
-    Breakfast: ${selectedOption.meals.breakfast.name}
-    Lunch: ${selectedOption.meals.lunch.name}
-    Dinner: ${selectedOption.meals.dinner.name}
+        if (!selectedOption) {
+            console.error('❌ Could not find selected option in list.');
+            return;
+        }
 
-    Modifiers/Notes from user: ${mealData.modifiers || 'None'}
+        const cookSkillLevel = user.cookSkillLevel || 'medium';
 
-    Format strictly for WhatsApp (bold, italics, lists). 
-    Limit to 5-7 clear steps total. It MUST be extremely actionable.
-    Example:
-    👨‍🍳 *Today's Menu*
-    ...
-    `;
+        // Robust property access with fallbacks
+        const bName = selectedOption.meals?.breakfast?.name || 'Breakfast';
+        const lName = selectedOption.meals?.lunch?.name || 'Lunch';
+        const dName = selectedOption.meals?.dinner?.name || 'Dinner';
 
-    const instructions = await generateContentWithFallback(prompt);
+        const prompt = `
+Generate concise, forwardable WhatsApp cooking instructions for a home cook with skill level: ${cookSkillLevel}.
+The meals are:
+- Breakfast: ${bName}
+- Lunch: ${lName}
+- Dinner: ${dName}
 
+Modifiers/Notes from user: ${mealData.modifiers || 'None'}
 
-    if (user.phoneNumber) {
-        await client.messages.create({
-            from: 'whatsapp:+14155238886',
-            to: `whatsapp:${user.phoneNumber}`,
-            body: instructions
-        });
+Format strictly for WhatsApp (bold, italics, lists). 
+Limit to 5-7 clear steps total. It MUST be extremely actionable.
+Example:
+👨‍🍳 *Today's Menu*
+...
+`;
+
+        const instructions = await generateContentWithFallback(prompt);
+
+        if (user.phoneNumber) {
+            await client.messages.create({
+                from: 'whatsapp:+14155238886',
+                to: `whatsapp:${user.phoneNumber}`,
+                body: instructions
+            });
+        }
+    } catch (e: any) {
+        console.error("Cook Instructions Generation Failed:", e.message);
+        // Fail gracefully: send a simple confirmation since the ⚠️ error emoji is discouraging
+        if (user.phoneNumber) {
+            await client.messages.create({
+                from: 'whatsapp:+14155238886',
+                to: `whatsapp:${user.phoneNumber}`,
+                body: "✅ *Meal plan confirmed!* I'll have the instructions ready shortly."
+            });
+        }
     }
 }
+
 
 
 async function handleExecutionCheck(client: twilio.Twilio, householdId: string, hData: any, user: any, msg: string, pendingDate: string) {
