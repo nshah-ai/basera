@@ -56,8 +56,19 @@ export async function GET(req: NextRequest) {
         const prompt = `
 You are an expert Indian home chef and meal planner...
 `;
-        const responseText = await generateContentWithFallback(prompt, "application/json");
-        const generatedData = JSON.parse(responseText);
+        let generatedData: any = { options: [] };
+        try {
+            generatedData = JSON.parse(responseText.replace(/```json/g, '').replace(/```/g, '').trim());
+        } catch (e: any) {
+            console.error("JSON Parse Error on Gemini Output:", responseText);
+            throw new Error("Failed to parse AI meal suggestions into JSON.");
+        }
+
+        const optionsToSave = generatedData?.options || [];
+        if (optionsToSave.length === 0) {
+            throw new Error("AI returned zero meal options.");
+        }
+
 
 
         // 3. Save to Firestore
@@ -70,7 +81,8 @@ You are an expert Indian home chef and meal planner...
         await mealLogRef.set({
             id: dateStr,
             date: dateStr,
-            suggestedOptions: generatedData.options,
+            suggestedOptions: optionsToSave,
+
             createdAt: FieldValue.serverTimestamp()
         }, { merge: true });
 
@@ -88,7 +100,8 @@ You are an expert Indian home chef and meal planner...
 
         let msgBody = `🥘 *Time to plan meals for tomorrow, ${formattedDate}!*\n\n`;
 
-        generatedData.options.forEach((opt: any, index: number) => {
+        optionsToSave.forEach((opt: any, index: number) => {
+
             msgBody += `*Option ${index + 1}:*\n`;
             msgBody += `- 🍳 B: ${opt.meals.breakfast.name}\n`;
             msgBody += `- 🍛 L: ${opt.meals.lunch.name}\n`;
