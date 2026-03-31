@@ -103,14 +103,19 @@ async function handleOrderApproval(client: twilio.Twilio, householdId: string, h
     const cleanMsg = msg.toLowerCase().trim();
 
     if (cleanMsg === 'yes' || cleanMsg === 'y' || cleanMsg.includes('create')) {
-        await adminDb.collection('households').doc(householdId).update({ 'botState.currentState': 'IDLE' });
+        // STICKY STATE: Do not set to IDLE yet. We stay in AWAITING_ORDER_APPROVAL 
+        // while the user places the order.
+        await adminDb.collection('households').doc(householdId).update({
+            'botState.lastUpdated': FieldValue.serverTimestamp()
+        });
 
         await notifyPartners(client, hData, user.phoneNumber,
             `🛒 *${user.name}* has just confirmed the grocery order for tomorrow's meals!`
         );
 
-        return `🛒 *Your Grocery Checklist*\n\n1. Onions (1kg)\n2. Tomatoes (1kg)\n3. Fresh Coriander\n\n📌 Please place the order manually via Blinkit, Instacart, etc. Reply "Ordered" when done!`;
+        return `🛒 *Your Grocery Checklist*\n\n1. Onions (1kg)\n2. Tomatoes (1kg)\n3. Fresh Coriander\n\n📌 Please place the order manually via Blinkit, Instacart, etc. Reply *Ordered* when done!`;
     }
+
 
     if (cleanMsg === 'no' || cleanMsg === 'n' || cleanMsg.includes('skip') || cleanMsg.includes('later')) {
         await adminDb.collection('households').doc(householdId).update({ 'botState.currentState': 'IDLE' });
@@ -124,7 +129,7 @@ async function handleOrderApproval(client: twilio.Twilio, householdId: string, h
         return `👍 Got it! I've saved the meal plan. Check the message above for the cook instructions.`;
     }
 
-    if (cleanMsg === 'ordered') {
+    if (cleanMsg === 'ordered' || cleanMsg === 'placed' || cleanMsg === 'confirm' || cleanMsg === 'done') {
         await adminDb.collection('households').doc(householdId).update({ 'botState.currentState': 'IDLE' });
 
         await notifyPartners(client, hData, user.phoneNumber,
@@ -136,7 +141,10 @@ async function handleOrderApproval(client: twilio.Twilio, householdId: string, h
         return `✅ Awesome. Ingredients marked as restocked. Check the message above for the cook instructions.`;
     }
 
-    return "Please reply YES to create the checklist, or NO to skip.";
+    // TRANSPARENT STATE: If message doesn't match meal flow keywords, return null.
+    // This allows the main Task Bot to handle it as a regular task.
+    return null;
+
 }
 
 async function generateCookInstructions(client: twilio.Twilio, householdId: string, hData: any, user: any, pendingDate: string) {
