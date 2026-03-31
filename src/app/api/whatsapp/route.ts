@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { User } from '@/types';
 import twilio from 'twilio';
 import { handleMealBotState } from '@/lib/meal-bot';
+import { generateContentWithFallback } from '@/lib/gemini';
 
 
 export async function GET(req: NextRequest) {
@@ -38,11 +38,7 @@ export async function POST(req: NextRequest) {
         if (!apiKey || !sid || !token) throw new Error("Missing Credentials");
 
         const client = twilio(sid, token);
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({
-            model: "models/gemini-2.0-flash",
-            generationConfig: { responseMimeType: "application/json" }
-        });
+
 
         const formData = await req.formData();
         const incomingMsg = (formData.get('Body') as string) || '';
@@ -97,35 +93,34 @@ export async function POST(req: NextRequest) {
             return new NextResponse(messagingResponse.toString(), { headers: { 'Content-Type': 'text/xml' } });
         }
 
-        // 2. AI Parsing (Synchronous, 4s Timeout)
-
+        // 2. AI Parsing (Synchronous, 4s Timeout Fallback included)
         let taskData: any;
-        let rawAi = "";
+        let responseText = "";
         try {
-            const userContext = (hData.users || []).map((u: any) => `${u.name} (ID: ${u.id})`).join(', ');
             const prompt = `
-            Task Message: "${incomingMsg}"
-            Household Users: ${userContext}
+
+            You are an intelligent household assistant.
+            Extract task details from the message. Return JSON ONLY.
+            Fields: title, priority (high/medium/low), assigneeId (map names to IDs), dueDate (YYYY-MM-DD).
+            
+            Message: "${incomingMsg}"
+            Household Context:
+            ${JSON.stringify({
+                users: hData.users,
+                recentTasks: hData.recentTasks || [],
+                ingredients: hData.ingredients || []
+            })}
             Current Date: ${istDate}
             Sender: ${user?.name || 'User'}
-
-            Instructions:
-            - Return JSON ONLY.
-            - Extract title (clean names like "for Avanya" out).
-            - Identify priority (high, medium, low).
-            - assigneeId: map names to IDs.
-            - dueDate: YYYY-MM-DD.
             `;
 
-            const aiPromise = model.generateContent(prompt);
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 4000));
-
-            const result: any = await Promise.race([aiPromise, timeoutPromise]);
-            rawAi = (await result.response).text();
-            taskData = JSON.parse(rawAi);
+            responseText = await generateContentWithFallback(prompt, "application/json");
+            taskData = JSON.parse(responseText);
         } catch (e: any) {
             console.warn('⚠️ AI Error/Timeout:', e.message);
+            responseText = "Timeout or Error";
             taskData = { title: incomingMsg, priority: "medium", assigneeId: null, dueDate: istDate };
+
         }
 
         // --- HYBRID MATCHING (Code-based Backup) ---
@@ -154,8 +149,9 @@ export async function POST(req: NextRequest) {
             status: 'pending',
             createdAt: Date.now(),
             recurrence: 'none',
-            metadata: { via: 'whatsapp', debug: rawAi.substring(0, 100) }
+            metadata: { via: 'whatsapp', debug: responseText.substring(0, 100) }
         };
+
 
         await adminDb.collection('households').doc(householdId).collection('tasks').doc(taskId).set(newTask);
 

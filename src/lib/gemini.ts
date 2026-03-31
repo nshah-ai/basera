@@ -18,20 +18,20 @@ export async function generateContentWithFallback(prompt: string, responseMimeTy
     } catch (e20: any) {
         console.warn("❌ Gemini 2.0 Failed:", e20?.message || e20);
 
-        // 2. Fallback to Gemini 1.5 Flash
+        // 2. Fallback to Gemini 2.5 Flash
         try {
-            console.log("🔄 Attempting 1.5-flash fallback...");
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", generationConfig: config });
+            console.log("🔄 Attempting 2.5-flash fallback...");
+            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: config });
             const result = await model.generateContent(prompt);
             const response = await result.response;
             return response.text();
-        } catch (e15: any) {
-            console.error("❌ Gemini 1.5-flash Failed:", e15?.message || e15);
+        } catch (e25: any) {
+            console.error("❌ Gemini 2.5-flash Failed:", e25?.message || e25);
 
-            // 3. Last Resort Fallback to Gemini 1.5 Flash-8B
+            // 3. Last Resort Fallback to Gemini Flash Latest (1.5)
             try {
-                console.log("🔄 Attempting 1.5-flash-8b last resort...");
-                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-8b", generationConfig: config });
+                console.log("🔄 Attempting gemini-flash-latest fallback...");
+                const model = genAI.getGenerativeModel({ model: "gemini-flash-latest", generationConfig: config });
                 const result = await model.generateContent(prompt);
                 const response = await result.response;
                 return response.text();
@@ -40,5 +40,6 @@ export async function generateContentWithFallback(prompt: string, responseMimeTy
                 throw eFinal;
             }
         }
+
     }
 }
