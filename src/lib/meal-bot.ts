@@ -3,7 +3,8 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import twilio from 'twilio';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", generationConfig: { responseMimeType: "application/json" } });
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash", generationConfig: { responseMimeType: "application/json" } });
+
 
 export async function handleMealBotState(
     client: twilio.Twilio,
@@ -226,11 +227,12 @@ async function notifyPartners(client: twilio.Twilio, hData: any, senderNumber: s
                     to: `whatsapp:${u.phoneNumber}`,
                     body: message
                 });
-            } catch (e) {
-                console.error("Partner Notify Error:", e);
+            } catch (e: any) {
+                console.error("Partner Notify Error:", e?.message);
             }
         }
     }
 }
+
 
 

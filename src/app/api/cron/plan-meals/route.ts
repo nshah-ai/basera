@@ -52,9 +52,10 @@ export async function GET(req: NextRequest) {
 
         // 2. Generate Options via Gemini
         const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash",
+            model: "gemini-2.0-flash",
             generationConfig: { responseMimeType: "application/json" }
         });
+
 
 
         const prompt = `
@@ -143,8 +144,13 @@ Return ONLY a JSON object matching this schema:
 
         return NextResponse.json({ success: true, date: dateStr, messagesSent });
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Plan Meals Error:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({
+            error: 'Internal Server Error',
+            details: error?.message || 'Unknown error',
+            stack: process.env.NODE_ENV === 'development' ? error?.stack : undefined
+        }, { status: 500 });
     }
+
 }
