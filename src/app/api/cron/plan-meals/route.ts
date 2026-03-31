@@ -56,18 +56,44 @@ export async function GET(req: NextRequest) {
         const prompt = `
 You are an expert Indian home chef and meal planner...
 `;
-        let generatedData: any = { options: [] };
+        let generatedData: any = {};
         try {
-            generatedData = JSON.parse(responseText.replace(/```json/g, '').replace(/```/g, '').trim());
+            // Strip markdown formatting if present
+            const cleanText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
+            generatedData = JSON.parse(cleanText);
         } catch (e: any) {
             console.error("JSON Parse Error on Gemini Output:", responseText);
             throw new Error("Failed to parse AI meal suggestions into JSON.");
         }
 
-        const optionsToSave = generatedData?.options || [];
-        if (optionsToSave.length === 0) {
-            throw new Error("AI returned zero meal options.");
+        // Deep search for the options array. 
+        // Different models (2.0 vs 2.5 vs 1.5) might wrap it differently.
+        let optionsToSave: any[] = [];
+
+        if (Array.isArray(generatedData)) {
+            // The AI returned the array directly
+            optionsToSave = generatedData;
+        } else if (generatedData?.options && Array.isArray(generatedData.options)) {
+            // Standard format
+            optionsToSave = generatedData.options;
+        } else if (generatedData?.meals && Array.isArray(generatedData.meals)) {
+            // Alternate format
+            optionsToSave = generatedData.meals;
+        } else {
+            // Hunt for any array in the root object
+            for (const key in generatedData) {
+                if (Array.isArray(generatedData[key]) && generatedData[key].length > 0) {
+                    optionsToSave = generatedData[key];
+                    break;
+                }
+            }
         }
+
+        if (optionsToSave.length === 0) {
+            console.error("AI Output schema mismatch:", JSON.stringify(generatedData));
+            throw new Error("AI returned a valid JSON but no array of meal options could be found.");
+        }
+
 
 
 
