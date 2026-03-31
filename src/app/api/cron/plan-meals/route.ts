@@ -116,8 +116,10 @@ Return ONLY a JSON object matching this schema:
 
         // 4. Send WhatsApp Messages
         const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+        const formattedDate = tomorrow.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: '2-digit' });
 
-        let msgBody = `🥘 *Time to plan meals for tomorrow!*\n\n`;
+        let msgBody = `🥘 *Time to plan meals for tomorrow, ${formattedDate}!*\n\n`;
+
         generatedData.options.forEach((opt: any, index: number) => {
             msgBody += `*Option ${index + 1}:*\n`;
             msgBody += `- 🍳 B: ${opt.meals.breakfast.name}\n`;

@@ -12,7 +12,13 @@ export async function handleMealBotState(
     user: any,
     incomingMsg: string
 ): Promise<string | null> {
+    // STRICT ISOLATION: Only allow for the configured admin household
+    if (householdId !== (process.env.NEXT_PUBLIC_ADMIN_HOUSEHOLD_ID || 'KA5HX7')) {
+        return null;
+    }
+
     const state = hData.botState?.currentState;
+
     if (!state || state === 'IDLE') return null; // Not in meal flow
 
     const pendingDate = hData.botState?.pendingMealDate;
