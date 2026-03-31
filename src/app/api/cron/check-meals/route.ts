@@ -20,7 +20,8 @@ export async function GET(req: NextRequest) {
 
 
 
-    const adminHouseholdId = process.env.NEXT_PUBLIC_ADMIN_HOUSEHOLD_ID;
+    const adminHouseholdId = process.env.NEXT_PUBLIC_ADMIN_HOUSEHOLD_ID || 'KA5HX7';
+
     if (!adminHouseholdId) {
         return NextResponse.json({ error: 'No admin household ID configured' }, { status: 400 });
     }
