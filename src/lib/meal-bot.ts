@@ -89,21 +89,68 @@ async function handleOrderApproval(client: twilio.Twilio, householdId: string, h
     if (cleanMsg === 'yes' || cleanMsg === 'y' || cleanMsg.includes('create')) {
         await adminDb.collection('households').doc(householdId).update({ 'botState.currentState': 'IDLE' });
 
-        return `🛒 *Your Blinkit Checklist*\n\n1. Onions (1kg)\n2. Tomatoes (1kg)\n3. Fresh Coriander\n\n📌 Please place the order manually. Reply "Ordered" when done!`;
+        return `🛒 *Your Grocery Checklist*\n\n1. Onions (1kg)\n2. Tomatoes (1kg)\n3. Fresh Coriander\n\n📌 Please place the order manually via Blinkit, Instacart, etc. Reply "Ordered" when done!`;
     }
 
     if (cleanMsg === 'no' || cleanMsg === 'n' || cleanMsg.includes('skip') || cleanMsg.includes('later')) {
         await adminDb.collection('households').doc(householdId).update({ 'botState.currentState': 'IDLE' });
-        return `👍 Got it! I've saved the meal plan. The cook instructions will be ready tomorrow.`;
+
+        // Generate Cook Instructions
+        await generateCookInstructions(client, householdId, hData, user, pendingDate);
+        return `👍 Got it! I've saved the meal plan. Check the message above for the cook instructions.`;
     }
 
     if (cleanMsg === 'ordered') {
         await adminDb.collection('households').doc(householdId).update({ 'botState.currentState': 'IDLE' });
-        return `✅ Awesome. Ingredients marked as restocked.`;
+
+        // Generate Cook Instructions
+        await generateCookInstructions(client, householdId, hData, user, pendingDate);
+        return `✅ Awesome. Ingredients marked as restocked. Check the message above for the cook instructions.`;
     }
 
     return "Please reply YES to create the checklist, or NO to skip.";
 }
+
+async function generateCookInstructions(client: twilio.Twilio, householdId: string, hData: any, user: any, pendingDate: string) {
+    const mealLogDoc = await adminDb.collection('households').doc(householdId).collection('mealLogs').doc(pendingDate).get();
+    if (!mealLogDoc.exists) return;
+    const mealData = mealLogDoc.data();
+
+    if (!mealData || !mealData.selectedOptionId) return;
+
+    const selectedOption = mealData.suggestedOptions.find((o: any) => o.id === mealData.selectedOptionId);
+    if (!selectedOption) return;
+
+    const cookSkillLevel = user.cookSkillLevel || 'medium';
+
+    const prompt = `
+    Generate concise, forwardable WhatsApp cooking instructions for a home cook with skill level: ${cookSkillLevel}.
+    The meals are:
+    Breakfast: ${selectedOption.meals.breakfast.name}
+    Lunch: ${selectedOption.meals.lunch.name}
+    Dinner: ${selectedOption.meals.dinner.name}
+
+    Modifiers/Notes from user: ${mealData.modifiers || 'None'}
+
+    Format strictly for WhatsApp (bold, italics, lists). 
+    Limit to 5-7 clear steps total. It MUST be extremely actionable.
+    Example:
+    👨‍🍳 *Today's Menu*
+    ...
+    `;
+
+    const result = await model.generateContent(prompt);
+    const instructions = result.response.text();
+
+    if (user.phoneNumber) {
+        await client.messages.create({
+            from: 'whatsapp:+14155238886',
+            to: `whatsapp:${user.phoneNumber}`,
+            body: instructions
+        });
+    }
+}
+
 
 async function handleExecutionCheck(client: twilio.Twilio, householdId: string, hData: any, user: any, msg: string, pendingDate: string) {
     const cleanMsg = msg.toLowerCase().trim();
