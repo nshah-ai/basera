@@ -3,6 +3,8 @@ import { adminDb } from '@/lib/firebase-admin';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { User } from '@/types';
 import twilio from 'twilio';
+import { handleMealBotState } from '@/lib/meal-bot';
+
 
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
@@ -88,7 +90,15 @@ export async function POST(req: NextRequest) {
 
         const istDate = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
 
+        // 1c. Intercept for Meal Bot State Machine
+        const mealReply = await handleMealBotState(client, householdId, hData, user, incomingMsg);
+        if (mealReply) {
+            messagingResponse.message(mealReply);
+            return new NextResponse(messagingResponse.toString(), { headers: { 'Content-Type': 'text/xml' } });
+        }
+
         // 2. AI Parsing (Synchronous, 4s Timeout)
+
         let taskData: any;
         let rawAi = "";
         try {
