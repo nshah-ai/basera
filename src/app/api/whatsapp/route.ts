@@ -5,8 +5,10 @@ import twilio from 'twilio';
 import { handleMealBotState } from '@/lib/meal-bot';
 import { generateContentWithFallback } from '@/lib/gemini';
 
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+
     const { searchParams } = new URL(req.url);
     const code = searchParams.get('code') || 'KA5HX7';
 

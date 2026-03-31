@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import twilio from 'twilio';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
+
     // Basic security check for CRON trigger (Vercel sets this header)
     const authHeader = req.headers.get('authorization');
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}` && process.env.NODE_ENV === 'production') {

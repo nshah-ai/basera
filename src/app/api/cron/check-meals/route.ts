@@ -3,6 +3,9 @@ import { adminDb } from '@/lib/firebase-admin';
 import twilio from 'twilio';
 import { FieldValue } from 'firebase-admin/firestore';
 
+export const dynamic = 'force-dynamic';
+
+
 
 export async function GET(req: NextRequest) {
     const url = req.url;

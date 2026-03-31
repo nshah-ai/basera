@@ -6,13 +6,18 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
  * Attempts to generate content using Gemini 2.0 Flash (preferred),
  * with automatic, unconditional fallbacks to 1.5-flash and 1.5-flash-8b on any failure.
  */
-export async function generateContentWithFallback(prompt: string, responseMimeType?: string) {
+export async function generateContentWithFallback(prompt: string, responseMimeType?: string, systemInstruction?: string) {
     const config: GenerationConfig = responseMimeType ? { responseMimeType } : {};
 
     // 1. Try Gemini 2.0 Flash
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash", generationConfig: config });
+        const modelInfo = systemInstruction
+            ? { model: "gemini-2.0-flash", generationConfig: config, systemInstruction }
+            : { model: "gemini-2.0-flash", generationConfig: config };
+
+        const model = genAI.getGenerativeModel(modelInfo);
         const result = await model.generateContent(prompt);
+
         const response = await result.response;
         return response.text();
     } catch (e20: any) {
@@ -21,8 +26,12 @@ export async function generateContentWithFallback(prompt: string, responseMimeTy
         // 2. Fallback to Gemini 2.5 Flash
         try {
             console.log("🔄 Attempting 2.5-flash fallback...");
-            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: config });
+            const modelInfo = systemInstruction
+                ? { model: "gemini-2.5-flash", generationConfig: config, systemInstruction }
+                : { model: "gemini-2.5-flash", generationConfig: config };
+            const model = genAI.getGenerativeModel(modelInfo);
             const result = await model.generateContent(prompt);
+
             const response = await result.response;
             return response.text();
         } catch (e25: any) {
@@ -31,8 +40,12 @@ export async function generateContentWithFallback(prompt: string, responseMimeTy
             // 3. Last Resort Fallback to Gemini Flash Latest (1.5)
             try {
                 console.log("🔄 Attempting gemini-flash-latest fallback...");
-                const model = genAI.getGenerativeModel({ model: "gemini-flash-latest", generationConfig: config });
+                const modelInfo = systemInstruction
+                    ? { model: "gemini-flash-latest", generationConfig: config, systemInstruction }
+                    : { model: "gemini-flash-latest", generationConfig: config };
+                const model = genAI.getGenerativeModel(modelInfo);
                 const result = await model.generateContent(prompt);
+
                 const response = await result.response;
                 return response.text();
             } catch (eFinal: any) {

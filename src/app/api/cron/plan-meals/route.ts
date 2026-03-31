@@ -4,6 +4,9 @@ import twilio from 'twilio';
 import { FieldValue } from 'firebase-admin/firestore';
 import { generateContentWithFallback } from '@/lib/gemini';
 
+export const dynamic = 'force-dynamic';
+
+
 
 
 
@@ -54,9 +57,38 @@ export async function GET(req: NextRequest) {
 
         // 2. Generate Options via Gemini Fallback
         const prompt = `
-You are an expert Indian home chef and meal planner...
+INPUT DATA:
+- Household Preferences: ${JSON.stringify(preferences)}
+- Recent Meals: ${JSON.stringify(recentMeals)}
+
+TASK:
+Generate 2 distinct Indian meal plan options for tomorrow.
+
+CONSTRAINTS:
+- Format: JSON ONLY. 
+- No conversation. No "Namaste". No markdown tags.
+- Ingredients must be common in Indian kitchens.
+- Avoid repeating items from 'Recent Meals'.
+
+SCHEMA:
+{
+  "options": [
+    {
+      "id": "option1",
+      "meals": {
+        "breakfast": { "name": "...", "ingredients": ["..."] },
+        "lunch": { "name": "...", "ingredients": ["..."] },
+        "dinner": { "name": "...", "ingredients": ["..."] }
+      }
+    }
+  ]
+}
 `;
-        const responseText = await generateContentWithFallback(prompt, "application/json");
+
+        const systemInstruction = `You are a strict API bot. You must ONLY output a raw JSON object. Do not include markdown tags. Do not say hello. Do not add any conversational text. Your output must match this schema: { "options": [ { "id": "option1", "meals": { "breakfast": { "name": "...", "ingredients": ["..."] }, "lunch": { "name": "...", "ingredients": ["..."] }, "dinner": { "name": "...", "ingredients": ["..."] } } } ] }`;
+
+        const responseText = await generateContentWithFallback(prompt, "application/json", systemInstruction);
+
         let generatedData: any = {};
         try {
             // Strip markdown formatting if present
@@ -73,10 +105,17 @@ You are an expert Indian home chef and meal planner...
             if (Array.isArray(obj)) {
                 // Check if this array looks like a list of meal options (has meals or breakfast keys)
                 const isMealArray = obj.some(item =>
-                    item && (item.meals || item.breakfast || item.id?.startsWith('option'))
+                    item && (
+                        item.meals ||
+                        item.breakfast ||
+                        item.lunch ||
+                        item.dinner ||
+                        item.id?.toString().toLowerCase().includes('option')
+                    )
                 );
                 if (isMealArray) return obj;
             }
+
             if (typeof obj === 'object' && obj !== null) {
                 for (const key of Object.keys(obj)) {
                     const found = findMealArray(obj[key]);
