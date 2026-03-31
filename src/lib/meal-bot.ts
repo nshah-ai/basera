@@ -3,7 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import twilio from 'twilio';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { responseMimeType: "application/json" } });
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", generationConfig: { responseMimeType: "application/json" } });
 
 export async function handleMealBotState(
     client: twilio.Twilio,
@@ -79,6 +79,15 @@ async function handleSelection(client: twilio.Twilio, householdId: string, hData
             'botState.currentState': 'AWAITING_ORDER_APPROVAL'
         });
 
+        const selectedOptionData = hData.botState?.suggestedOptions?.find((o: any) => o.id === intent.selectedOption);
+        const selectedMealNames = selectedOptionData ?
+            `${selectedOptionData.meals.breakfast.name}, ${selectedOptionData.meals.lunch.name}, and ${selectedOptionData.meals.dinner.name}` :
+            'the meals';
+
+        await notifyPartners(client, hData, user.phoneNumber,
+            `🥘 *${user.name}* just selected ${intent.selectedOption} for tomorrow!\nMenu: ${selectedMealNames}.\n\nPreparing the grocery list...`
+        );
+
         let reply = `✅ Awesome! Lockingly in ${intent.selectedOption}.\n`;
         if (intent.modifiers) reply += `Notes: *${intent.modifiers}*\n\n`;
         reply += `🛒 *Ingredient Check*\nYou may need some fresh veggies (Onion, Tomato, Coriander). \n\n*Should I create a Blinkit checklist for you?* (Reply YES or NO)`;
@@ -95,11 +104,19 @@ async function handleOrderApproval(client: twilio.Twilio, householdId: string, h
     if (cleanMsg === 'yes' || cleanMsg === 'y' || cleanMsg.includes('create')) {
         await adminDb.collection('households').doc(householdId).update({ 'botState.currentState': 'IDLE' });
 
+        await notifyPartners(client, hData, user.phoneNumber,
+            `🛒 *${user.name}* has just confirmed the grocery order for tomorrow's meals!`
+        );
+
         return `🛒 *Your Grocery Checklist*\n\n1. Onions (1kg)\n2. Tomatoes (1kg)\n3. Fresh Coriander\n\n📌 Please place the order manually via Blinkit, Instacart, etc. Reply "Ordered" when done!`;
     }
 
     if (cleanMsg === 'no' || cleanMsg === 'n' || cleanMsg.includes('skip') || cleanMsg.includes('later')) {
         await adminDb.collection('households').doc(householdId).update({ 'botState.currentState': 'IDLE' });
+
+        await notifyPartners(client, hData, user.phoneNumber,
+            `✅ *${user.name}* confirmed we skip ingredients/ready to cook for tomorrow's plan.`
+        );
 
         // Generate Cook Instructions
         await generateCookInstructions(client, householdId, hData, user, pendingDate);
@@ -108,6 +125,10 @@ async function handleOrderApproval(client: twilio.Twilio, householdId: string, h
 
     if (cleanMsg === 'ordered') {
         await adminDb.collection('households').doc(householdId).update({ 'botState.currentState': 'IDLE' });
+
+        await notifyPartners(client, hData, user.phoneNumber,
+            `🛒 *${user.name}* has just confirmed the grocery order for tomorrow's meals!`
+        );
 
         // Generate Cook Instructions
         await generateCookInstructions(client, householdId, hData, user, pendingDate);
@@ -194,4 +215,22 @@ async function handleExecutionCheck(client: twilio.Twilio, householdId: string, 
 
     return "Reply YES if the meal was made, or NO if it was skipped.";
 }
+
+async function notifyPartners(client: twilio.Twilio, hData: any, senderNumber: string, message: string) {
+    const users = hData.users || [];
+    for (const u of users) {
+        if (u.phoneNumber && u.phoneNumber !== senderNumber) {
+            try {
+                await client.messages.create({
+                    from: 'whatsapp:+14155238886',
+                    to: `whatsapp:${u.phoneNumber}`,
+                    body: message
+                });
+            } catch (e) {
+                console.error("Partner Notify Error:", e);
+            }
+        }
+    }
+}
+
 

@@ -52,9 +52,10 @@ export async function GET(req: NextRequest) {
 
         // 2. Generate Options via Gemini
         const model = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash",
+            model: "gemini-1.5-flash",
             generationConfig: { responseMimeType: "application/json" }
         });
+
 
         const prompt = `
 You are an expert Indian home chef and meal planner. 
