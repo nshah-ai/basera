@@ -75,9 +75,9 @@ async function handleSelection(client: twilio.Twilio, householdId: string, hData
             modifiers: intent.modifiers || null
         });
 
-        // Simplified Element: Skip strict ingredient check for MVP v0, just assume some missing items to test flow
+        // Simplified Flow: Skip grocery flow for MVP, go straight to instructions
         await adminDb.collection('households').doc(householdId).update({
-            'botState.currentState': 'AWAITING_ORDER_APPROVAL'
+            'botState.currentState': 'IDLE'
         });
 
         const selectedOptionData = hData.botState?.suggestedOptions?.find((o: any) => o.id === intent.selectedOption);
@@ -86,15 +86,19 @@ async function handleSelection(client: twilio.Twilio, householdId: string, hData
             'the meals';
 
         await notifyPartners(client, hData, user.phoneNumber,
-            `🥘 *${user.name}* just selected ${intent.selectedOption} for tomorrow!\nMenu: ${selectedMealNames}.\n\nPreparing the grocery list...`
+            `🥘 *${user.name}* just selected ${intent.selectedOption} for tomorrow!\nMenu: ${selectedMealNames}.`
         );
 
-        let reply = `✅ Awesome! Lockingly in ${intent.selectedOption}.\n`;
+        // Generate and send instructions immediately
+        generateCookInstructions(client, householdId, hData, user, pendingDate);
+
+        let reply = `✅ Awesome! Locking in ${intent.selectedOption}.\n`;
         if (intent.modifiers) reply += `Notes: *${intent.modifiers}*\n\n`;
-        reply += `🛒 *Ingredient Check*\nYou may need some fresh veggies (Onion, Tomato, Coriander). \n\n*Should I create a Blinkit checklist for you?* (Reply YES or NO)`;
+        reply += `👨‍🍳 I've generated the recipes for your cook. Sending them over now!`;
 
         return reply;
     }
+
 
     return "🤔 I didn't quite catch that. Reply 1, 2, Change, or Skip.";
 }
