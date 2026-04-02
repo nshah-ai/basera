@@ -257,8 +257,11 @@ async function handleExecutionCheck(client: twilio.Twilio, householdId: string, 
         return `Noted! I won't suggest that combination again for a while.`;
     }
 
-    return "Reply YES if the meal was made, or NO if it was skipped.";
+    // TRANSPARENT STATE: If message is long or doesn't match feedback keywords, return null.
+    // This allows the main Task Bot to handle it (e.g. "Induction cooker fix").
+    return null;
 }
+
 
 async function notifyPartners(client: twilio.Twilio, hData: any, senderNumber: string, message: string) {
     const users = hData.users || [];
