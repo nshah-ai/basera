@@ -65,22 +65,36 @@ export function Onboarding({ onComplete }: OnboardingProps) {
             setStep(3); // intermediate step for phone
         } else if (step === 3) {
             // Actual creation
+            if (!phoneNumber.trim()) {
+                setError("Your WhatsApp number is required to sync with the bot.");
+                return;
+            }
             setIsProcessing(true);
             try {
                 const creatorId = generateId();
                 const partnerId = generateId();
 
-                const newUsers: User[] = [
-                    { id: creatorId, name: userName, avatarColor: getAvatarColor(0), phoneNumber: phoneNumber.trim() || undefined },
-                    { id: partnerId, name: partnerName, avatarColor: getAvatarColor(1), phoneNumber: partnerPhoneNumber.trim() || undefined },
-                ];
+                const creator: User = {
+                    id: creatorId,
+                    name: userName,
+                    avatarColor: getAvatarColor(0)
+                };
+                if (phoneNumber.trim()) creator.phoneNumber = phoneNumber.trim();
 
+                const partner: User = {
+                    id: partnerId,
+                    name: partnerName,
+                    avatarColor: getAvatarColor(1)
+                };
+                if (partnerPhoneNumber.trim()) partner.phoneNumber = partnerPhoneNumber.trim();
+
+                const newUsers: User[] = [creator, partner];
 
                 const householdId = await createHousehold(newUsers);
 
                 setUsers(newUsers);
                 setHouseholdId(householdId);
-                setCurrentUser(newUsers[0].id); // Creator is the first user
+                setCurrentUser(creatorId); // Creator is the first user
 
                 setStep(2); // Success step
                 // No automatic checkout - let user see the share button
@@ -126,11 +140,14 @@ export function Onboarding({ onComplete }: OnboardingProps) {
             const hId = joinCode.trim().toUpperCase();
 
             // 1. Update Profile in Firestore if phone provided
-            let finalUsers = fetchedUsers;
-            if (phoneNumber.trim()) {
-                const updated = await updateUserProfile(hId, selectedUserId, { phoneNumber: phoneNumber.trim() });
-                if (updated) finalUsers = updated;
+            if (!phoneNumber.trim()) {
+                setError("Your WhatsApp number is required to join.");
+                return;
             }
+
+            let finalUsers = fetchedUsers;
+            const updated = await updateUserProfile(hId, selectedUserId, { phoneNumber: phoneNumber.trim() });
+            if (updated) finalUsers = updated;
 
             // 2. Set Local State
             setHouseholdId(hId);
@@ -298,7 +315,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
 
                         <div className="space-y-6 mb-8">
                             <div>
-                                <label className="text-xs font-medium text-textMuted mb-2 block px-1">Your Number</label>
+                                <label className="text-xs font-medium text-textMuted mb-2 block px-1">Your WhatsApp Number (Required)</label>
                                 <input
                                     type="tel"
                                     value={phoneNumber}
@@ -332,8 +349,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
 
                         <button
                             onClick={mode === 'create' ? handleCreateContinue : handleFinishJoin}
-                            disabled={isProcessing}
-                            className="w-full bg-primary text-white py-4 rounded-2xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 hover:shadow-md"
+                            disabled={isProcessing || !phoneNumber.trim()}
+                            className="w-full bg-primary text-white py-4 rounded-2xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-40 hover:shadow-md"
                         >
                             {isProcessing ? (
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
