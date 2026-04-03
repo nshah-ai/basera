@@ -65,8 +65,9 @@ export function Onboarding({ onComplete }: OnboardingProps) {
             setStep(3); // intermediate step for phone
         } else if (step === 3) {
             // Actual creation
-            if (!phoneNumber.trim()) {
-                setError("Your WhatsApp number is required to sync with the bot.");
+            const trimmedPhone = phoneNumber.trim().replace(/\D/g, ''); // Clean digits only
+            if (!trimmedPhone || trimmedPhone.length < 10) {
+                setError("A valid 10-digit WhatsApp number is required to sync with the bot.");
                 return;
             }
             setIsProcessing(true);
@@ -79,7 +80,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                     name: userName,
                     avatarColor: getAvatarColor(0)
                 };
-                if (phoneNumber.trim()) creator.phoneNumber = phoneNumber.trim();
+                creator.phoneNumber = phoneNumber.trim(); // We know it's not empty now
 
                 const partner: User = {
                     id: partnerId,
@@ -140,8 +141,9 @@ export function Onboarding({ onComplete }: OnboardingProps) {
             const hId = joinCode.trim().toUpperCase();
 
             // 1. Update Profile in Firestore if phone provided
-            if (!phoneNumber.trim()) {
-                setError("Your WhatsApp number is required to join.");
+            const trimmedPhone = phoneNumber.trim().replace(/\D/g, '');
+            if (!trimmedPhone || trimmedPhone.length < 10) {
+                setError("A valid 10-digit WhatsApp number is required to join.");
                 return;
             }
 
@@ -349,7 +351,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
 
                         <button
                             onClick={mode === 'create' ? handleCreateContinue : handleFinishJoin}
-                            disabled={isProcessing || !phoneNumber.trim()}
+                            disabled={isProcessing}
                             className="w-full bg-primary text-white py-4 rounded-2xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-40 hover:shadow-md"
                         >
                             {isProcessing ? (
@@ -494,7 +496,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                                     onClick={() => {
                                         const hId = useTaskStore.getState().householdId;
                                         const msg = `Hey ${partnerName}! 🏠 I'm setting up our home on Basera. \n\n1. First, text "join cold-scientific" to +14155238886 to activate the bot. \n2. Then, click here to join our board: https://basera-home.vercel.app?code=${hId}`;
-                                        const url = `https://wa.me/${partnerPhoneNumber.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`;
+                                        const cleanPartnerPhone = partnerPhoneNumber.trim().replace(/\D/g, '');
+                                        const url = cleanPartnerPhone
+                                            ? `https://wa.me/${cleanPartnerPhone}?text=${encodeURIComponent(msg)}`
+                                            : `https://wa.me/?text=${encodeURIComponent(msg)}`;
                                         window.open(url, '_blank');
                                     }}
                                     className="w-full bg-[#25D366] text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg active:scale-95 transition-all"
