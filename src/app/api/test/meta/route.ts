@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import axios from 'axios';
 import { sendMetaMessage } from '@/lib/whatsapp-meta';
 
 export const dynamic = 'force-dynamic';
@@ -11,16 +12,32 @@ export async function GET() {
     }
 
     try {
-        console.log(`🧪 Triggering Meta Cloud API test for ${adminPhone}...`);
+        console.log(`🧪 Triggering Meta Cloud API TEMPLATE test for ${adminPhone}...`);
 
-        await sendMetaMessage(
-            adminPhone,
-            "🚀 *Basera Meta Cloud API Test*\n\nThis is a private, official message from your own Meta Developer App! 🥘✨"
+        // Use the official 'hello_world' template which is allowed even before a session starts
+        const response = await axios.post(
+            `https://graph.facebook.com/v21.0/${process.env.META_PHONE_NUMBER_ID}/messages`,
+            {
+                messaging_product: 'whatsapp',
+                to: adminPhone,
+                type: 'template',
+                template: {
+                    name: 'hello_world',
+                    language: { code: 'en_US' }
+                }
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${process.env.META_ACCESS_TOKEN}`,
+                    'Content-Type': 'application/json'
+                }
+            }
         );
 
         return NextResponse.json({
             success: true,
-            message: `Test message sent to ${adminPhone} via Meta.`
+            message: `Template 'hello_world' sent to ${adminPhone}.`,
+            data: response.data
         });
     } catch (error: any) {
         return NextResponse.json({
